@@ -2,6 +2,7 @@ package com.frame.app.platform.camera
 
 import android.content.Context
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import java.util.concurrent.Executor
+import java.util.concurrent.TimeUnit
 
 /**
  * CameraX-backed [CameraController].
@@ -119,8 +121,11 @@ class CameraXController(
 
     /** Reflect the bound camera's capabilities into [state]. */
     private fun publishReady(camera: androidx.camera.core.Camera) {
-        val zoom = camera.cameraInfo.zoomState.value
-        val hasFlash = camera.cameraInfo.hasFlashUnit()
+        val info = camera.cameraInfo
+        val zoom = info.zoomState.value
+        val hasFlash = info.hasFlashUnit()
+        val exposure = info.exposureState
+        val exposureRange = exposure.exposureCompensationRange
         _state.update {
             it.copy(
                 isReady = true,
@@ -133,6 +138,11 @@ class CameraXController(
                 minZoomRatio = zoom?.minZoomRatio ?: 1f,
                 maxZoomRatio = zoom?.maxZoomRatio ?: 1f,
                 linearZoom = zoom?.linearZoom ?: 0f,
+                exposureIndex = if (exposure.isExposureCompensationSupported) {
+                    exposure.exposureCompensationIndex
+                } else 0,
+                minExposureIndex = if (exposure.isExposureCompensationSupported) exposureRange.lower else 0,
+                maxExposureIndex = if (exposure.isExposureCompensationSupported) exposureRange.upper else 0,
                 error = null,
             )
         }
@@ -186,19 +196,61 @@ class CameraXController(
     }
 
     override fun setZoomRatio(ratio: Float) {
-        // Task 6
+        val camera = boundCamera ?: return
+        val zoom = camera.cameraInfo.zoomState.value ?: return
+        val clamped = CameraMath.clampZoom(ratio, zoom.minZoomRatio, zoom.maxZoomRatio)
+        camera.cameraControl.setZoomRatio(clamped)
+        // Reflect optimistically; zoomState also updates, but this keeps the UI
+        // responsive during a pinch without waiting for the LiveData tick.
+        _state.update { it.copy(zoomRatio = clamped) }
     }
 
     override fun setLinearZoom(value: Float) {
-        // Task 6
+        val camera = boundCamera ?: return
+        val clamped = CameraMath.clampLinearZoom(value)
+        camera.cameraControl.setLinearZoom(clamped)
+        _state.update { it.copy(linearZoom = clamped) }
     }
 
     override fun focusAt(x: Float, y: Float) {
-        // Task 6
+        val camera = boundCamera ?: return
+        val view = previewView ?: return
+        // Build a metering point in the preview's coordinate space from the
+        // normalized tap, then request AF+AE metering there.
+        val factory = view.meteringPointFactory
+        val point = factory.createPoint(
+            CameraMath.clampNormalized(x) * view.width,
+            CameraMath.clampNormalized(y) * view.height,
+        )
+        val action = FocusMeteringAction.Builder(
+            point,
+            FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE,
+        ).setAutoCancelDuration(FOCUS_AUTO_CANCEL_SECONDS, TimeUnit.SECONDS).build()
+
+        // Guard against devices/points that don't support the requested metering.
+        if (!camera.cameraInfo.isFocusMeteringSupported(action)) {
+            _state.update { it.copy(lastFocusResult = FocusResult.UNSUPPORTED) }
+            return
+        }
+
+        _state.update { it.copy(lastFocusResult = FocusResult.IN_PROGRESS) }
+        val future = camera.cameraControl.startFocusAndMetering(action)
+        future.addListener({
+            val result = runCatching {
+                if (future.get().isFocusSuccessful) FocusResult.SUCCESS else FocusResult.FAILED
+            }.getOrDefault(FocusResult.FAILED)
+            _state.update { it.copy(lastFocusResult = result) }
+        }, mainExecutor)
     }
 
     override fun setExposureIndex(index: Int) {
-        // Task 6
+        val camera = boundCamera ?: return
+        val exposure = camera.cameraInfo.exposureState
+        if (!exposure.isExposureCompensationSupported) return
+        val range = exposure.exposureCompensationRange
+        val clamped = CameraMath.clampExposure(index, range.lower, range.upper)
+        camera.cameraControl.setExposureCompensationIndex(clamped)
+        _state.update { it.copy(exposureIndex = clamped) }
     }
 
     override fun capturePhoto(onResult: (CaptureResult) -> Unit) {
@@ -247,6 +299,10 @@ class CameraXController(
                 }
             },
         )
+    }
+
+    private companion object {
+        const val FOCUS_AUTO_CANCEL_SECONDS = 4L
     }
 }
 

@@ -86,6 +86,15 @@ fun CameraScreen(modifier: Modifier = Modifier) {
             },
         )
 
+        // Gesture layer: pinch-to-zoom + tap-to-focus (with focus ring).
+        CameraGestureOverlay(
+            focusResult = cameraState.lastFocusResult,
+            onZoomBy = { scaleFactor ->
+                controller.setZoomRatio(cameraState.zoomRatio * scaleFactor)
+            },
+            onFocus = { nx, ny -> controller.focusAt(nx, ny) },
+        )
+
         // Capture flash.
         val flashAlpha by animateFloatAsState(
             targetValue = if (showFlash) 0.8f else 0f,
@@ -141,6 +150,31 @@ fun CameraScreen(modifier: Modifier = Modifier) {
                 .statusBarsPadding()
                 .padding(top = 12.dp, end = 12.dp),
         )
+
+        // Zoom readout, shown only when zoomed past the minimum.
+        if (cameraState.zoomRatio > cameraState.minZoomRatio + 0.05f) {
+            ZoomIndicator(
+                zoomRatio = cameraState.zoomRatio,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 12.dp),
+            )
+        }
+
+        // Exposure slider, sitting just above the shutter when supported.
+        if (cameraState.supportsExposure) {
+            ExposureSlider(
+                index = cameraState.exposureIndex,
+                minIndex = cameraState.minExposureIndex,
+                maxIndex = cameraState.maxExposureIndex,
+                onIndexChange = { controller.setExposureIndex(it) },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 128.dp),
+            )
+        }
 
         // Transient confirmation / error.
         AnimatedVisibility(
