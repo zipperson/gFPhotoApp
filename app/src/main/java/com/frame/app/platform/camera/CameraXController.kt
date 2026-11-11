@@ -2,11 +2,16 @@ package com.frame.app.platform.camera
 
 import android.content.Context
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
+import com.frame.app.platform.storage.MediaStorePhotoStore
+import com.frame.app.platform.storage.PhotoNaming
+import com.frame.app.platform.storage.PhotoStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,12 +33,14 @@ import java.util.concurrent.Executor
  */
 class CameraXController(
     private val appContext: Context,
+    private val photoStore: PhotoStore = MediaStorePhotoStore(appContext),
 ) : CameraController {
 
     private val mainExecutor: Executor = ContextCompat.getMainExecutor(appContext)
 
     private var cameraProvider: ProcessCameraProvider? = null
     private var preview: Preview? = null
+    private var imageCapture: ImageCapture? = null
     private var boundCamera: androidx.camera.core.Camera? = null
 
     private var currentSelector: CameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
@@ -69,12 +76,20 @@ class CameraXController(
         }
         preview = previewUseCase
 
+        val captureUseCase = ImageCapture.Builder()
+            // Prioritize low shutter latency for a responsive feel; FRAME is a
+            // composition tool, so capture should feel immediate.
+            .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+            .build()
+        imageCapture = captureUseCase
+
         try {
             provider.unbindAll()
             val camera = provider.bindToLifecycle(
                 lifecycleOwner,
                 currentSelector,
                 previewUseCase,
+                captureUseCase,
             )
             boundCamera = camera
             publishReady(camera)
@@ -143,8 +158,51 @@ class CameraXController(
     }
 
     override fun capturePhoto(onResult: (CaptureResult) -> Unit) {
-        // Task 4
-        onResult(CaptureResult.Failure("Capture not implemented yet"))
+        val capture = imageCapture
+        if (capture == null) {
+            onResult(CaptureResult.Failure("Camera not ready"))
+            return
+        }
+
+        val destination = photoStore.createDestination(PhotoNaming.jpegFileName())
+        if (destination == null) {
+            onResult(CaptureResult.Failure("Could not create a file to save the photo"))
+            return
+        }
+
+        val outputStream = runCatching {
+            appContext.contentResolver.openOutputStream(destination.uri)
+        }.getOrNull()
+        if (outputStream == null) {
+            photoStore.discard(destination)
+            onResult(CaptureResult.Failure("Could not open the photo file for writing"))
+            return
+        }
+
+        val options = ImageCapture.OutputFileOptions.Builder(outputStream).build()
+
+        capture.takePicture(
+            options,
+            mainExecutor,
+            object : ImageCapture.OnImageSavedCallback {
+                override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
+                    runCatching { outputStream.close() }
+                    photoStore.finalize(destination)
+                    onResult(CaptureResult.Success(destination.uri.toString()))
+                }
+
+                override fun onError(exception: ImageCaptureException) {
+                    runCatching { outputStream.close() }
+                    photoStore.discard(destination)
+                    onResult(
+                        CaptureResult.Failure(
+                            message = exception.message ?: "Failed to capture photo",
+                            cause = exception,
+                        )
+                    )
+                }
+            },
+        )
     }
 }
 

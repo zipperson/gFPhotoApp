@@ -1,40 +1,70 @@
 package com.frame.app.ui.camera
 
 import androidx.camera.view.PreviewView
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.frame.app.platform.camera.CameraXController
+import com.frame.app.platform.camera.CaptureResult
 
 /**
- * The live camera screen. Task 3 renders a full-screen CameraX preview.
+ * The live camera screen with capture (Task 4).
  *
- * The CameraX preview is a classic Android [PreviewView] hosted inside Compose
- * via [AndroidView]; overlays (Task 8) will be a Compose Canvas layered on top
- * within this same [Box], which is why the preview sits in a sizing container
- * rather than filling the window directly.
- *
- * The [CameraXController] is remembered for the screen's lifetime and bound to
- * the current [LocalLifecycleOwner], so CameraX owns start/stop and teardown.
+ * Layout: a full-screen [PreviewView] (hosted via [AndroidView]) with the
+ * shutter and transient feedback layered on top in the same [Box] — the slot
+ * where overlays (Task 8) and the rest of the controls (Tasks 5-6) will sit.
  */
 @Composable
 fun CameraScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    // One controller per screen instance.
     val controller = remember { CameraXController(context.applicationContext) }
     val cameraState by controller.state.collectAsStateWithLifecycle()
+
+    // Transient capture state, local to the screen.
+    var isCapturing by remember { mutableStateOf(false) }
+    var showFlash by remember { mutableStateOf(false) }
+    var feedback by remember { mutableStateOf<String?>(null) }
+
+    // Auto-dismiss the feedback message after a short delay.
+    LaunchedEffect(feedback) {
+        if (feedback != null) {
+            kotlinx.coroutines.delay(2000)
+            feedback = null
+        }
+    }
+    // The capture flash is a brief white overlay.
+    LaunchedEffect(showFlash) {
+        if (showFlash) {
+            kotlinx.coroutines.delay(90)
+            showFlash = false
+        }
+    }
 
     Box(
         modifier = modifier
@@ -46,8 +76,6 @@ fun CameraScreen(modifier: Modifier = Modifier) {
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
                 PreviewView(ctx).apply {
-                    // PERFORMANCE compat gives the broadest device support;
-                    // FILL_CENTER matches a full-screen camera UI.
                     implementationMode = PreviewView.ImplementationMode.COMPATIBLE
                     scaleType = PreviewView.ScaleType.FILL_CENTER
                     controller.bind(lifecycleOwner, this)
@@ -55,9 +83,78 @@ fun CameraScreen(modifier: Modifier = Modifier) {
             },
         )
 
-        // Surface a binding error if the camera failed to start.
+        // Capture flash.
+        val flashAlpha by animateFloatAsState(
+            targetValue = if (showFlash) 0.8f else 0f,
+            animationSpec = tween(durationMillis = 90),
+            label = "captureFlash",
+        )
+        if (flashAlpha > 0f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.White.copy(alpha = flashAlpha)),
+            )
+        }
+
+        // Shutter row, pinned to the bottom.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = 32.dp)
+                .navigationBarsPadding(),
+            contentAlignment = Alignment.BottomCenter,
+        ) {
+            ShutterButton(
+                enabled = cameraState.isReady && !isCapturing,
+                onCapture = {
+                    isCapturing = true
+                    showFlash = true
+                    controller.capturePhoto { result ->
+                        isCapturing = false
+                        feedback = when (result) {
+                            is CaptureResult.Success -> "Photo saved"
+                            is CaptureResult.Failure -> result.message
+                        }
+                    }
+                },
+            )
+        }
+
+        // Transient confirmation / error.
+        AnimatedVisibility(
+            visible = feedback != null,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 48.dp),
+        ) {
+            CaptureFeedbackPill(text = feedback.orEmpty())
+        }
+
         cameraState.error?.let { message ->
             CameraErrorNotice(message = message)
         }
+    }
+}
+
+@Composable
+private fun CaptureFeedbackPill(text: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .background(
+                color = Color.Black.copy(alpha = 0.6f),
+                shape = MaterialTheme.shapes.large,
+            )
+            .fillMaxWidth(0.7f)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            color = Color.White,
+            style = MaterialTheme.typography.bodyMedium,
+        )
     }
 }
