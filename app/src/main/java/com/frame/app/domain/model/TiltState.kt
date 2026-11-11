@@ -22,7 +22,9 @@ data class TiltState(
         isAvailable && abs(rollDegrees) <= toleranceDegrees
 
     companion object {
-        const val DEFAULT_LEVEL_TOLERANCE = 1.5f
+        // Handheld hands rarely hold within 1.5 degrees; 3 degrees reads as
+        // "straight" without being unreachable while composing.
+        const val DEFAULT_LEVEL_TOLERANCE = 3.0f
 
         val UNAVAILABLE = TiltState(
             rollDegrees = 0f,

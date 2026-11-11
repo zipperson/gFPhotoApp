@@ -29,10 +29,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.frame.app.domain.model.TiltState
 import com.frame.app.platform.camera.CameraLens
 import com.frame.app.platform.camera.CameraXController
 import com.frame.app.platform.camera.CaptureResult
 import com.frame.app.platform.camera.next
+import com.frame.app.platform.sensor.DeviceLevelSensor
 
 /**
  * The live camera screen with capture (Task 4).
@@ -48,6 +50,10 @@ fun CameraScreen(modifier: Modifier = Modifier) {
 
     val controller = remember { CameraXController(context.applicationContext) }
     val cameraState by controller.state.collectAsStateWithLifecycle()
+
+    // Device level/tilt sensor.
+    val levelSensor = remember { DeviceLevelSensor(context.applicationContext) }
+    val tilt by levelSensor.tilt.collectAsStateWithLifecycle(initialValue = TiltState.UNAVAILABLE)
 
     // Transient capture state, local to the screen.
     var isCapturing by remember { mutableStateOf(false) }
@@ -94,6 +100,9 @@ fun CameraScreen(modifier: Modifier = Modifier) {
             },
             onFocus = { nx, ny -> controller.focusAt(nx, ny) },
         )
+
+        // Level / horizon indicator (centered).
+        LevelIndicator(tilt = tilt)
 
         // Capture flash.
         val flashAlpha by animateFloatAsState(

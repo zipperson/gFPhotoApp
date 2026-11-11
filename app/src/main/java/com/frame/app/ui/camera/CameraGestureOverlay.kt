@@ -1,6 +1,8 @@
 package com.frame.app.ui.camera
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.fillMaxSize
@@ -39,6 +41,20 @@ fun CameraGestureOverlay(
     var ringCenter by remember { mutableStateOf<Offset?>(null) }
     val ringAlpha = remember { Animatable(0f) }
     val ringScale = remember { Animatable(1.4f) }
+
+    // Target ring color per focus outcome; the animated value tweens between
+    // them so success eases from yellow into green rather than snapping.
+    val targetColor = when (focusResult) {
+        com.frame.app.platform.camera.FocusResult.SUCCESS -> Color(0xFF4CAF50)
+        com.frame.app.platform.camera.FocusResult.FAILED,
+        com.frame.app.platform.camera.FocusResult.UNSUPPORTED -> Color(0xFFE53935)
+        else -> FrameYellow
+    }
+    val ringColor by animateColorAsState(
+        targetValue = targetColor,
+        animationSpec = tween(durationMillis = 450),
+        label = "focusRingColor",
+    )
 
     LaunchedEffect(ringCenter) {
         if (ringCenter != null) {
@@ -79,14 +95,8 @@ fun CameraGestureOverlay(
             .drawBehind {
                 val center = ringCenter ?: return@drawBehind
                 val radius = 44.dp.toPx() * ringScale.value
-                // Ring color reflects focus outcome: yellow while focusing,
-                // green on success, red on failure/unsupported.
-                val ringColor = when (focusResult) {
-                    com.frame.app.platform.camera.FocusResult.SUCCESS -> Color(0xFF4CAF50)
-                    com.frame.app.platform.camera.FocusResult.FAILED,
-                    com.frame.app.platform.camera.FocusResult.UNSUPPORTED -> Color(0xFFE53935)
-                    else -> FrameYellow
-                }
+                // ringColor tweens between outcome colors (see animateColorAsState),
+                // so the yellow -> green transition on a successful lock is gradual.
                 drawCircle(
                     color = ringColor.copy(alpha = ringAlpha.value),
                     radius = radius,
