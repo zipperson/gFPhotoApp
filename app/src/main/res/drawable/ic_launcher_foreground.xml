@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Simple FRAME mark: a yellow viewfinder bracket on a transparent field. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:strokeColor="#FFD400"
+        android:strokeWidth="4"
+        android:fillColor="#00000000"
+        android:pathData="M34,38 L34,34 L46,34 M62,34 L74,34 L74,38 M74,70 L74,74 L62,74 M46,74 L34,74 L34,70" />
+    <path
+        android:strokeColor="#FFD400"
+        android:strokeWidth="3"
+        android:fillColor="#00000000"
+        android:pathData="M54,46 m-8,0 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0" />
+</vector>
