@@ -29,12 +29,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.frame.app.domain.model.CompositionResult
+import com.frame.app.domain.model.SubjectFrame
 import com.frame.app.domain.model.TiltState
+import com.frame.app.domain.service.OverlaySettings
 import com.frame.app.platform.camera.CameraLens
 import com.frame.app.platform.camera.CameraXController
 import com.frame.app.platform.camera.CaptureResult
 import com.frame.app.platform.camera.next
+import com.frame.app.platform.overlay.DefaultOverlayRenderer
 import com.frame.app.platform.sensor.DeviceLevelSensor
+import com.frame.app.ui.camera.overlay.CompositionOverlay
 
 /**
  * The live camera screen with capture (Task 4).
@@ -54,6 +59,16 @@ fun CameraScreen(modifier: Modifier = Modifier) {
     // Device level/tilt sensor.
     val levelSensor = remember { DeviceLevelSensor(context.applicationContext) }
     val tilt by levelSensor.tilt.collectAsStateWithLifecycle(initialValue = TiltState.UNAVAILABLE)
+
+    // Overlay pipeline: renderer builds a spec from current state + settings.
+    val overlayRenderer = remember { DefaultOverlayRenderer() }
+    val overlaySettings = OverlaySettings.GUIDED // Task 9 makes this user-selectable
+    val overlaySpec = overlayRenderer.buildSpec(
+        subject = SubjectFrame.empty(0L),       // Phase 3 feeds real detections
+        tilt = tilt,
+        composition = CompositionResult.NONE,   // Phase 4 feeds real results
+        settings = overlaySettings,
+    )
 
     // Transient capture state, local to the screen.
     var isCapturing by remember { mutableStateOf(false) }
@@ -101,8 +116,9 @@ fun CameraScreen(modifier: Modifier = Modifier) {
             onFocus = { nx, ny -> controller.focusAt(nx, ny) },
         )
 
-        // Level / horizon indicator (centered).
-        LevelIndicator(tilt = tilt)
+        // Composition overlay: thirds grid, crosshair, horizon (and, in later
+        // phases, subject box + reference outline) — all from the OverlaySpec.
+        CompositionOverlay(spec = overlaySpec)
 
         // Capture flash.
         val flashAlpha by animateFloatAsState(
