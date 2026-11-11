@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -28,8 +29,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.frame.app.platform.camera.CameraLens
 import com.frame.app.platform.camera.CameraXController
 import com.frame.app.platform.camera.CaptureResult
+import com.frame.app.platform.camera.next
 
 /**
  * The live camera screen with capture (Task 4).
@@ -120,6 +123,24 @@ fun CameraScreen(modifier: Modifier = Modifier) {
                 },
             )
         }
+
+        // Top control bar: flash, torch, lens switch.
+        CameraTopControls(
+            flashMode = cameraState.flashMode,
+            torchEnabled = cameraState.torchEnabled,
+            hasFlashUnit = cameraState.hasFlashUnit,
+            lens = cameraState.lens,
+            onCycleFlash = { controller.setFlashMode(cameraState.flashMode.next()) },
+            onToggleTorch = { controller.setTorch(!cameraState.torchEnabled) },
+            onSwitchLens = {
+                val target = if (cameraState.lens == CameraLens.BACK) CameraLens.FRONT else CameraLens.BACK
+                controller.setLens(target)
+            },
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(top = 12.dp, end = 12.dp),
+        )
 
         // Transient confirmation / error.
         AnimatedVisibility(

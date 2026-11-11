@@ -5,6 +5,7 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
+import androidx.camera.core.TorchState
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
@@ -43,7 +44,12 @@ class CameraXController(
     private var imageCapture: ImageCapture? = null
     private var boundCamera: androidx.camera.core.Camera? = null
 
+    // Retained so a lens switch can rebind against the same UI surface.
+    private var lifecycleOwner: LifecycleOwner? = null
+    private var previewView: PreviewView? = null
+
     private var currentSelector: CameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+    private var currentFlashMode: FlashMode = FlashMode.OFF
 
     private val _state = MutableStateFlow(CameraState())
     override val state: StateFlow<CameraState> = _state.asStateFlow()
@@ -54,6 +60,8 @@ class CameraXController(
      * or config change); it rebinds cleanly.
      */
     fun bind(lifecycleOwner: LifecycleOwner, previewView: PreviewView) {
+        this.lifecycleOwner = lifecycleOwner
+        this.previewView = previewView
         val future = ProcessCameraProvider.getInstance(appContext)
         future.addListener({
             try {
@@ -64,6 +72,14 @@ class CameraXController(
                 _state.update { it.copy(isReady = false, error = t.message ?: "Camera init failed") }
             }
         }, mainExecutor)
+    }
+
+    /** Rebind use cases using the retained lifecycle/preview (after a lens switch). */
+    private fun rebind() {
+        val provider = cameraProvider ?: return
+        val owner = lifecycleOwner ?: return
+        val view = previewView ?: return
+        bindUseCases(provider, owner, view)
     }
 
     private fun bindUseCases(
@@ -81,6 +97,7 @@ class CameraXController(
             // composition tool, so capture should feel immediate.
             .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
             .build()
+            .apply { flashMode = currentFlashMode.toImageCaptureFlashMode() }
         imageCapture = captureUseCase
 
         try {
@@ -103,11 +120,15 @@ class CameraXController(
     /** Reflect the bound camera's capabilities into [state]. */
     private fun publishReady(camera: androidx.camera.core.Camera) {
         val zoom = camera.cameraInfo.zoomState.value
+        val hasFlash = camera.cameraInfo.hasFlashUnit()
         _state.update {
             it.copy(
                 isReady = true,
                 lens = currentSelector.toLens(),
-                hasFlashUnit = camera.cameraInfo.hasFlashUnit(),
+                flashMode = currentFlashMode,
+                // A lens with no flash unit can't hold a torch on; reset.
+                torchEnabled = if (hasFlash) it.torchEnabled else false,
+                hasFlashUnit = hasFlash,
                 zoomRatio = zoom?.zoomRatio ?: 1f,
                 minZoomRatio = zoom?.minZoomRatio ?: 1f,
                 maxZoomRatio = zoom?.maxZoomRatio ?: 1f,
@@ -130,15 +151,38 @@ class CameraXController(
     //     interface is satisfied and the UI can compile against the full API. ---
 
     override fun setLens(lens: CameraLens) {
-        // Task 5
+        val selector = when (lens) {
+            CameraLens.FRONT -> CameraSelector.DEFAULT_FRONT_CAMERA
+            CameraLens.BACK -> CameraSelector.DEFAULT_BACK_CAMERA
+        }
+        if (selector == currentSelector) return
+        currentSelector = selector
+        // Front cameras generally have no flash; torch can't survive the switch.
+        _state.update { it.copy(torchEnabled = false) }
+        rebind()
     }
 
     override fun setFlashMode(mode: FlashMode) {
-        // Task 5
+        currentFlashMode = mode
+        imageCapture?.flashMode = mode.toImageCaptureFlashMode()
+        _state.update { it.copy(flashMode = mode) }
     }
 
     override fun setTorch(enabled: Boolean) {
-        // Task 5
+        val camera = boundCamera ?: return
+        if (!camera.cameraInfo.hasFlashUnit()) return
+
+        // enableTorch returns a future that can complete exceptionally. Reflect
+        // the *actual* torch state CameraX reports rather than assuming success,
+        // so the icon tracks the hardware.
+        val future = camera.cameraControl.enableTorch(enabled)
+        future.addListener({
+            val actual = runCatching {
+                future.get()
+                camera.cameraInfo.torchState.value == TorchState.ON
+            }.getOrDefault(false)
+            _state.update { it.copy(torchEnabled = actual) }
+        }, mainExecutor)
     }
 
     override fun setZoomRatio(ratio: Float) {
@@ -208,3 +252,9 @@ class CameraXController(
 
 private fun CameraSelector.toLens(): CameraLens =
     if (this == CameraSelector.DEFAULT_FRONT_CAMERA) CameraLens.FRONT else CameraLens.BACK
+
+private fun FlashMode.toImageCaptureFlashMode(): Int = when (this) {
+    FlashMode.OFF -> ImageCapture.FLASH_MODE_OFF
+    FlashMode.ON -> ImageCapture.FLASH_MODE_ON
+    FlashMode.AUTO -> ImageCapture.FLASH_MODE_AUTO
+}
