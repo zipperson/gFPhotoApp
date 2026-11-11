@@ -32,15 +32,17 @@ class DefaultOverlayRendererTest {
     }
 
     @Test
-    fun minimalSettings_hidesCrosshair() {
+    fun minimalSettings_isHorizonOnly() {
         val spec = renderer.buildSpec(
             subject = SubjectFrame.empty(0L),
             tilt = TiltState(rollDegrees = 0f, pitchDegrees = 0f, isAvailable = true),
             composition = CompositionResult.NONE,
             settings = OverlaySettings.MINIMAL,
         )
-        assertTrue(spec.showThirds)
+        // Minimal is clean: horizon only, no grid or crosshair.
+        assertFalse(spec.showThirds)
         assertFalse(spec.showCenterCrosshair)
+        assertEquals(true, spec.horizon?.isLevel)
     }
 
     @Test

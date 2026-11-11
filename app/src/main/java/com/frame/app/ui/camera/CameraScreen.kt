@@ -29,10 +29,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frame.app.domain.model.CompositionResult
 import com.frame.app.domain.model.SubjectFrame
 import com.frame.app.domain.model.TiltState
-import com.frame.app.domain.service.OverlaySettings
 import com.frame.app.platform.camera.CameraLens
 import com.frame.app.platform.camera.CameraXController
 import com.frame.app.platform.camera.CaptureResult
@@ -40,6 +40,8 @@ import com.frame.app.platform.camera.next
 import com.frame.app.platform.overlay.DefaultOverlayRenderer
 import com.frame.app.platform.sensor.DeviceLevelSensor
 import com.frame.app.ui.camera.overlay.CompositionOverlay
+import com.frame.app.viewmodel.OverlayViewModel
+import com.frame.app.viewmodel.OverlayViewModelFactory
 
 /**
  * The live camera screen with capture (Task 4).
@@ -60,14 +62,20 @@ fun CameraScreen(modifier: Modifier = Modifier) {
     val levelSensor = remember { DeviceLevelSensor(context.applicationContext) }
     val tilt by levelSensor.tilt.collectAsStateWithLifecycle(initialValue = TiltState.UNAVAILABLE)
 
+    // Overlay mode + settings (persisted via DataStore in OverlayViewModel).
+    val overlayViewModel: OverlayViewModel = viewModel(
+        factory = OverlayViewModelFactory(context.applicationContext),
+    )
+    val overlayPrefs by overlayViewModel.state.collectAsStateWithLifecycle()
+    var showSettingsSheet by remember { mutableStateOf(false) }
+
     // Overlay pipeline: renderer builds a spec from current state + settings.
     val overlayRenderer = remember { DefaultOverlayRenderer() }
-    val overlaySettings = OverlaySettings.GUIDED // Task 9 makes this user-selectable
     val overlaySpec = overlayRenderer.buildSpec(
         subject = SubjectFrame.empty(0L),       // Phase 3 feeds real detections
         tilt = tilt,
         composition = CompositionResult.NONE,   // Phase 4 feeds real results
-        settings = overlaySettings,
+        settings = overlayPrefs.settings,
     )
 
     // Transient capture state, local to the screen.
@@ -158,6 +166,17 @@ fun CameraScreen(modifier: Modifier = Modifier) {
             )
         }
 
+        // Top-left: mode toggle (Minimal/Guided) + overlay settings.
+        CameraModeControls(
+            mode = overlayPrefs.mode,
+            onToggleMode = { overlayViewModel.toggleMode() },
+            onOpenSettings = { showSettingsSheet = true },
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .statusBarsPadding()
+                .padding(top = 12.dp, start = 12.dp),
+        )
+
         // Top control bar: flash, torch, lens switch.
         CameraTopControls(
             flashMode = cameraState.flashMode,
@@ -216,6 +235,14 @@ fun CameraScreen(modifier: Modifier = Modifier) {
         cameraState.error?.let { message ->
             CameraErrorNotice(message = message)
         }
+    }
+
+    if (showSettingsSheet) {
+        OverlaySettingsSheet(
+            settings = overlayPrefs.settings,
+            onSettingsChange = { transform -> overlayViewModel.updateSettings(transform) },
+            onDismiss = { showSettingsSheet = false },
+        )
     }
 }
 

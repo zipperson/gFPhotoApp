@@ -41,13 +41,15 @@ data class OverlaySettings(
     val opacity: Float = 0.6f,
 ) {
     companion object {
+        // Minimal = clean "get out of the way" mode: just the level/horizon
+        // indicator, no grid or crosshair, so it's clearly distinct from Guided.
         val MINIMAL = OverlaySettings(
-            showThirds = true,
+            showThirds = false,
             showCenterCrosshair = false,
             showHorizon = true,
             showSubjectBox = false,
             showReferenceOutline = false,
-            opacity = 0.4f,
+            opacity = 0.5f,
         )
 
         val GUIDED = OverlaySettings(

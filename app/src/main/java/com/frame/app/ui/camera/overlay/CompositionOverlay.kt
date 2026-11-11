@@ -39,21 +39,15 @@ fun CompositionOverlay(
         val guide = Color.White.copy(alpha = spec.opacity)
         val stroke = 2f
 
+        // Draw order = z-order (back to front): grid, subject box, horizon, then
+        // the center crosshair last so it sits on top of everything.
+
         if (spec.showThirds) {
             // Two vertical and two horizontal lines at 1/3 and 2/3.
             listOf(1f / 3f, 2f / 3f).forEach { f ->
                 drawLine(guide, Offset(map.x(f), 0f), Offset(map.x(f), size.height), stroke)
                 drawLine(guide, Offset(0f, map.y(f)), Offset(size.width, map.y(f)), stroke)
             }
-        }
-
-        if (spec.showCenterCrosshair) {
-            val cx = map.x(0.5f)
-            val cy = map.y(0.5f)
-            val arm = size.minDimension * 0.03f
-            val cross = FrameYellow.copy(alpha = spec.opacity)
-            drawLine(cross, Offset(cx - arm, cy), Offset(cx + arm, cy), 3f)
-            drawLine(cross, Offset(cx, cy - arm), Offset(cx, cy + arm), 3f)
         }
 
         spec.subjectBox?.let { box ->
@@ -72,6 +66,15 @@ fun CompositionOverlay(
 
         spec.horizon?.let { horizon ->
             drawHorizon(horizon.rollDegrees, horizonColor.copy(alpha = spec.opacity))
+        }
+
+        if (spec.showCenterCrosshair) {
+            val cx = map.x(0.5f)
+            val cy = map.y(0.5f)
+            val arm = size.minDimension * 0.03f
+            val cross = FrameYellow.copy(alpha = spec.opacity)
+            drawLine(cross, Offset(cx - arm, cy), Offset(cx + arm, cy), 3f)
+            drawLine(cross, Offset(cx, cy - arm), Offset(cx, cy + arm), 3f)
         }
     }
 }
