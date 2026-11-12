@@ -7,9 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import com.frame.app.domain.service.OverlaySpec
 import com.frame.app.ui.theme.FrameYellow
 import kotlin.math.cos
@@ -51,17 +49,26 @@ fun CompositionOverlay(
         }
 
         spec.subjectBox?.let { box ->
-            val topLeft = Offset(map.x(box.left), map.y(box.top))
-            val boxSize = Size(
-                width = (box.right - box.left) * size.width,
-                height = (box.bottom - box.top) * size.height,
-            )
-            drawRect(
+            val left = map.x(box.left)
+            val top = map.y(box.top)
+            val right = map.x(box.right)
+            val bottom = map.y(box.bottom)
+            drawSubjectBrackets(
+                left, top, right, bottom,
                 color = FrameYellow.copy(alpha = spec.opacity),
-                topLeft = topLeft,
-                size = boxSize,
-                style = Stroke(width = 4f),
             )
+        }
+
+        // Landmark dots (head/shoulders/hips/etc.) over the subject.
+        if (spec.landmarks.isNotEmpty()) {
+            val dotColor = FrameYellow.copy(alpha = spec.opacity)
+            spec.landmarks.forEach { lm ->
+                drawCircle(
+                    color = dotColor,
+                    radius = 5f,
+                    center = Offset(map.x(lm.position.x), map.y(lm.position.y)),
+                )
+            }
         }
 
         spec.horizon?.let { horizon ->
@@ -77,6 +84,37 @@ fun CompositionOverlay(
             drawLine(cross, Offset(cx, cy - arm), Offset(cx, cy + arm), 3f)
         }
     }
+}
+
+/**
+ * Draw the subject box as four corner brackets (viewfinder "Framed" look) rather
+ * than a full rectangle, so it frames the subject without boxing them in.
+ */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSubjectBrackets(
+    left: Float,
+    top: Float,
+    right: Float,
+    bottom: Float,
+    color: Color,
+) {
+    val w = right - left
+    val h = bottom - top
+    // Corner arm length scales with box size but is clamped for small subjects.
+    val arm = (minOf(w, h) * 0.22f).coerceIn(16f, 60f)
+    val stroke = 4f
+
+    // Top-left
+    drawLine(color, Offset(left, top), Offset(left + arm, top), stroke)
+    drawLine(color, Offset(left, top), Offset(left, top + arm), stroke)
+    // Top-right
+    drawLine(color, Offset(right, top), Offset(right - arm, top), stroke)
+    drawLine(color, Offset(right, top), Offset(right, top + arm), stroke)
+    // Bottom-left
+    drawLine(color, Offset(left, bottom), Offset(left + arm, bottom), stroke)
+    drawLine(color, Offset(left, bottom), Offset(left, bottom - arm), stroke)
+    // Bottom-right
+    drawLine(color, Offset(right, bottom), Offset(right - arm, bottom), stroke)
+    drawLine(color, Offset(right, bottom), Offset(right, bottom - arm), stroke)
 }
 
 /** Draw the center level/horizon indicator: fixed ticks + a rolling line. */

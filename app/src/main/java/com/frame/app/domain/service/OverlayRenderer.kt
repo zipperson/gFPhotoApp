@@ -73,6 +73,8 @@ data class OverlaySpec(
     val showCenterCrosshair: Boolean,
     val horizon: HorizonSpec?,
     val subjectBox: com.frame.app.domain.model.NormalizedRect?,
+    /** Detected landmark points to dot on the overlay (empty when none/hidden). */
+    val landmarks: List<com.frame.app.domain.model.NormalizedLandmark> = emptyList(),
     val referenceOutline: com.frame.app.domain.model.NormalizedRect?,
     val opacity: Float,
 ) {
@@ -82,6 +84,7 @@ data class OverlaySpec(
             showCenterCrosshair = false,
             horizon = null,
             subjectBox = null,
+            landmarks = emptyList(),
             referenceOutline = null,
             opacity = 0.6f,
         )

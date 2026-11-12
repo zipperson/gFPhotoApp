@@ -30,12 +30,14 @@ class DefaultOverlayRenderer : OverlayRenderer {
         } else null
 
         val subjectBox = if (settings.showSubjectBox) subject.boundingBox else null
+        val landmarks = if (settings.showSubjectBox) subject.landmarks else emptyList()
 
         return OverlaySpec(
             showThirds = settings.showThirds,
             showCenterCrosshair = settings.showCenterCrosshair,
             horizon = horizon,
             subjectBox = subjectBox,
+            landmarks = landmarks,
             referenceOutline = null, // Phase 5
             opacity = settings.opacity.coerceIn(0f, 1f),
         )
