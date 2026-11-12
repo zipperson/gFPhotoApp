@@ -7,6 +7,7 @@ import com.frame.app.domain.service.HorizonSpec
 import com.frame.app.domain.service.OverlayRenderer
 import com.frame.app.domain.service.OverlaySettings
 import com.frame.app.domain.service.OverlaySpec
+import com.frame.app.domain.service.TargetSpec
 
 /**
  * Default [OverlayRenderer]: pure logic that turns the current frame state and
@@ -24,6 +25,7 @@ class DefaultOverlayRenderer : OverlayRenderer {
         tilt: TiltState,
         composition: CompositionResult,
         settings: OverlaySettings,
+        target: TargetSpec?,
     ): OverlaySpec {
         val horizon = if (settings.showHorizon && tilt.isAvailable) {
             HorizonSpec(rollDegrees = tilt.rollDegrees, isLevel = tilt.isLevel())
@@ -38,6 +40,8 @@ class DefaultOverlayRenderer : OverlayRenderer {
             horizon = horizon,
             subjectBox = subjectBox,
             landmarks = landmarks,
+            // Target guidance rides with subject-box visibility.
+            target = if (settings.showSubjectBox) target else null,
             referenceOutline = null, // Phase 5
             opacity = settings.opacity.coerceIn(0f, 1f),
         )

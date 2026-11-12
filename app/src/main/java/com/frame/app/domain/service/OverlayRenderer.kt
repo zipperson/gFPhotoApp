@@ -25,6 +25,7 @@ interface OverlayRenderer {
         tilt: TiltState,
         composition: CompositionResult,
         settings: OverlaySettings,
+        target: TargetSpec? = null,
     ): OverlaySpec
 }
 
@@ -75,6 +76,8 @@ data class OverlaySpec(
     val subjectBox: com.frame.app.domain.model.NormalizedRect?,
     /** Detected landmark points to dot on the overlay (empty when none/hidden). */
     val landmarks: List<com.frame.app.domain.model.NormalizedLandmark> = emptyList(),
+    /** Target placement guidance: where the subject should be + alignment. */
+    val target: TargetSpec? = null,
     val referenceOutline: com.frame.app.domain.model.NormalizedRect?,
     val opacity: Float,
 ) {
@@ -85,11 +88,27 @@ data class OverlaySpec(
             horizon = null,
             subjectBox = null,
             landmarks = emptyList(),
+            target = null,
             referenceOutline = null,
             opacity = 0.6f,
         )
     }
 }
+
+/**
+ * On-screen placement guidance: the ideal subject rectangle, the current subject
+ * center, and whether they're aligned. The overlay draws the target zone and an
+ * arrow from current -> target, turning green when [aligned].
+ */
+data class TargetSpec(
+    val targetRect: com.frame.app.domain.model.NormalizedRect,
+    val subjectCenter: com.frame.app.domain.model.NormalizedPoint?,
+    val aligned: Boolean,
+    /** Caption shown on the target zone (e.g. "Place subject here"). */
+    val label: String = "",
+    /** Caption shown when [aligned] (e.g. "Great portrait!"). */
+    val alignedLabel: String = "",
+)
 
 /**
  * Horizon/level indicator state.

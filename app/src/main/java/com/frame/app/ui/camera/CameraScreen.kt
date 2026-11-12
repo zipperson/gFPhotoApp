@@ -34,7 +34,11 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.frame.app.domain.model.CompositionResult
+import com.frame.app.domain.composition.CompositionTarget
+import com.frame.app.domain.composition.DefaultCompositionEngine
+import com.frame.app.domain.composition.toThresholds
+import com.frame.app.domain.service.TargetSpec
+import com.frame.app.domain.model.CameraMode
 import com.frame.app.domain.model.SubjectFrame
 import com.frame.app.domain.model.TiltState
 import com.frame.app.platform.camera.CameraLens
@@ -110,13 +114,39 @@ fun CameraScreen(
     )
     val stylePrefs by styleViewModel.state.collectAsStateWithLifecycle()
 
+    // Composition engine, tuned to the selected style. Recreated when the style
+    // changes so advice/scoring tracks the chosen look. Pure + cheap.
+    val compositionEngine = remember(stylePrefs.style) {
+        DefaultCompositionEngine(stylePrefs.style.toThresholds())
+    }
+    // Evaluate the current (smoothed) subject + tilt. Portrait preview ~ 9:16.
+    val composition = compositionEngine.evaluate(
+        subject = subject,
+        tilt = tilt,
+        frameAspectRatio = PREVIEW_ASPECT_RATIO,
+    )
+
+    // Target placement guidance: where the subject should sit for this style.
+    val target = if (subject.hasSubject) {
+        val thresholds = stylePrefs.style.toThresholds()
+        val rect = CompositionTarget.idealRectFor(thresholds, subject)
+        TargetSpec(
+            targetRect = rect,
+            subjectCenter = subject.boundingBox?.center,
+            aligned = CompositionTarget.isAligned(subject, rect),
+            label = "Place subject here",
+            alignedLabel = "Perfect — ${stylePrefs.style.displayName.lowercase()}!",
+        )
+    } else null
+
     // Overlay pipeline: renderer builds a spec from current state + settings.
     val overlayRenderer = remember { DefaultOverlayRenderer() }
     val overlaySpec = overlayRenderer.buildSpec(
         subject = subject,                       // live ML Kit detection (Phase 3)
         tilt = tilt,
-        composition = CompositionResult.NONE,   // Phase 4 feeds real results
+        composition = composition,               // live composition result (Phase 4)
         settings = overlayPrefs.settings,
+        target = target,
     )
 
     // Transient capture state, local to the screen.
@@ -260,6 +290,18 @@ fun CameraScreen(
             )
         }
 
+        // Live composition feedback (Guided mode only; advisory). Sits above the
+        // exposure slider / shutter so it reads without crowding the controls.
+        if (overlayPrefs.mode == CameraMode.GUIDED) {
+            CompositionFeedback(
+                result = composition,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 180.dp),
+            )
+        }
+
         // Exposure slider, sitting just above the shutter when supported.
         if (cameraState.supportsExposure) {
             ExposureSlider(
@@ -299,6 +341,10 @@ fun CameraScreen(
         )
     }
 }
+
+/** Portrait preview aspect ratio (width / height), ~9:16, used for composition
+ *  evaluation. The exact value isn't critical for the current rules. */
+private const val PREVIEW_ASPECT_RATIO = 9f / 16f
 
 @Composable
 private fun CaptureFeedbackPill(text: String, modifier: Modifier = Modifier) {

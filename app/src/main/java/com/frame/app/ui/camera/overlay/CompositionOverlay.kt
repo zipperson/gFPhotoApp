@@ -7,7 +7,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.sp
 import com.frame.app.domain.service.OverlaySpec
 import com.frame.app.ui.theme.FrameYellow
 import kotlin.math.cos
@@ -32,6 +39,8 @@ fun CompositionOverlay(
         label = "horizonColor",
     )
 
+    val textMeasurer = rememberTextMeasurer()
+
     Canvas(modifier = modifier.fillMaxSize()) {
         val map = OverlayMapping.forCanvas(size.width, size.height)
         val guide = Color.White.copy(alpha = spec.opacity)
@@ -45,6 +54,53 @@ fun CompositionOverlay(
             listOf(1f / 3f, 2f / 3f).forEach { f ->
                 drawLine(guide, Offset(map.x(f), 0f), Offset(map.x(f), size.height), stroke)
                 drawLine(guide, Offset(0f, map.y(f)), Offset(size.width, map.y(f)), stroke)
+            }
+        }
+
+        // Target placement guidance: draw the target zone first (behind), then
+        // an arrow from the subject toward it. Greens when aligned.
+        spec.target?.let { t ->
+            val guideColor = if (t.aligned) LevelGreen else Color.White
+            val tl = Offset(map.x(t.targetRect.left), map.y(t.targetRect.top))
+            val tSize = Size(
+                width = t.targetRect.width * size.width,
+                height = t.targetRect.height * size.height,
+            )
+            // Dashed-looking target outline (rounded).
+            drawRoundRect(
+                color = guideColor.copy(alpha = spec.opacity * 0.9f),
+                topLeft = tl,
+                size = tSize,
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(24f, 24f),
+                style = Stroke(width = 4f),
+            )
+
+            // Caption on the target zone.
+            val caption = if (t.aligned) t.alignedLabel else t.label
+            if (caption.isNotEmpty()) {
+                val layout = textMeasurer.measure(
+                    text = caption,
+                    style = TextStyle(
+                        color = if (t.aligned) LevelGreen else Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        background = Color.Black.copy(alpha = 0.5f),
+                    ),
+                )
+                // Centered just above the target's top edge (or inside if clipped).
+                val labelX = (map.x(t.targetRect.centerX) - layout.size.width / 2f)
+                    .coerceIn(0f, size.width - layout.size.width)
+                val rawY = tl.y - layout.size.height - 8f
+                val labelY = if (rawY < 0f) tl.y + 8f else rawY
+                drawText(layout, topLeft = Offset(labelX, labelY))
+            }
+
+            // Arrow from current subject center -> target center (only if not yet
+            // aligned and we know where the subject is).
+            if (!t.aligned && t.subjectCenter != null) {
+                val from = Offset(map.x(t.subjectCenter.x), map.y(t.subjectCenter.y))
+                val to = Offset(map.x(t.targetRect.centerX), map.y(t.targetRect.centerY))
+                drawGuidanceArrow(from, to, FrameYellow.copy(alpha = spec.opacity))
             }
         }
 
@@ -84,6 +140,38 @@ fun CompositionOverlay(
             drawLine(cross, Offset(cx, cy - arm), Offset(cx, cy + arm), 3f)
         }
     }
+}
+
+/**
+ * Draw a directional arrow from [from] to [to] with a simple arrowhead, guiding
+ * the user to move the camera so the subject lands in the target.
+ */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawGuidanceArrow(
+    from: Offset,
+    to: Offset,
+    color: Color,
+) {
+    val dx = to.x - from.x
+    val dy = to.y - from.y
+    val len = kotlin.math.hypot(dx, dy)
+    if (len < 24f) return // basically on target; skip the arrow
+
+    drawLine(color, from, to, strokeWidth = 6f)
+
+    // Arrowhead at the target end.
+    val ux = dx / len
+    val uy = dy / len
+    val head = 26f
+    val spread = 0.5f // radians off-axis
+    val cos = kotlin.math.cos(spread)
+    val sin = kotlin.math.sin(spread)
+    // Rotate the reverse direction by +/- spread for the two barbs.
+    val leftX = to.x - head * (ux * cos - uy * sin)
+    val leftY = to.y - head * (uy * cos + ux * sin)
+    val rightX = to.x - head * (ux * cos + uy * sin)
+    val rightY = to.y - head * (uy * cos - ux * sin)
+    drawLine(color, to, Offset(leftX, leftY), strokeWidth = 6f)
+    drawLine(color, to, Offset(rightX, rightY), strokeWidth = 6f)
 }
 
 /**
