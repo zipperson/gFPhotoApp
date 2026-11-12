@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,6 +39,8 @@ import com.frame.app.platform.camera.CameraXController
 import com.frame.app.platform.camera.CaptureResult
 import com.frame.app.platform.camera.next
 import com.frame.app.platform.overlay.DefaultOverlayRenderer
+import com.frame.app.platform.pose.FrameAnalyzer
+import com.frame.app.platform.pose.NoOpPoseDetector
 import com.frame.app.platform.sensor.DeviceLevelSensor
 import com.frame.app.ui.camera.overlay.CompositionOverlay
 import com.frame.app.viewmodel.OverlayViewModel
@@ -55,8 +58,28 @@ fun CameraScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    val controller = remember { CameraXController(context.applicationContext) }
+    // Phase 3 seam: a no-op pose detector fed by the ImageAnalysis use case.
+    // Proves camera -> analyzer -> detector -> results flows end to end today;
+    // Phase 3 swaps NoOpPoseDetector + analyzer body for ML Kit, untouched here.
+    val poseDetector = remember { NoOpPoseDetector() }
+    val frameAnalyzer = remember {
+        FrameAnalyzer(onFrame = { timestampMs, _ -> poseDetector.onFrame(timestampMs) })
+    }
+    val controller = remember {
+        CameraXController(
+            appContext = context.applicationContext,
+            frameAnalyzer = frameAnalyzer,
+        )
+    }
     val cameraState by controller.state.collectAsStateWithLifecycle()
+
+    DisposableEffect(Unit) {
+        poseDetector.start()
+        onDispose {
+            poseDetector.stop()
+            controller.shutdown()
+        }
+    }
 
     // Device level/tilt sensor.
     val levelSensor = remember { DeviceLevelSensor(context.applicationContext) }

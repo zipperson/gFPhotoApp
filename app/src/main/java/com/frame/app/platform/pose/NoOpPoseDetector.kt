@@ -7,21 +7,36 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * Phase 1 placeholder. Emits no subject detections. Exists so the camera
- * pipeline and the Phase 3 integration seam can be wired and verified
- * end-to-end before ML Kit is introduced. Replace with the ML Kit-backed
- * detector in Phase 3 without touching the camera binding or ViewModel.
+ * Phase 1 placeholder detector. It performs NO detection, but it does complete
+ * the pipeline: when the camera's [FrameAnalyzer] reports a frame via [onFrame],
+ * this emits an (empty) [SubjectFrame] on [results]. That proves the full
+ * camera -> analyzer -> detector -> results path is live before ML Kit arrives.
+ *
+ * Phase 3 replaces this with an ML Kit-backed detector that emits real subjects;
+ * nothing else in the pipeline changes.
  */
 class NoOpPoseDetector : PoseDetector {
 
     private val _results = MutableStateFlow(SubjectFrame.empty(timestampMs = 0L))
     override val results: Flow<SubjectFrame> = _results.asStateFlow()
 
+    @Volatile private var running = false
+
     override fun start() {
-        // No-op: no frames are consumed in Phase 1.
+        running = true
     }
 
     override fun stop() {
-        // No-op.
+        running = false
     }
+
+    /** Called by [FrameAnalyzer] for each camera frame. No detection, just
+     *  emits an empty result so consumers see the pipeline is flowing. */
+    fun onFrame(timestampMs: Long) {
+        if (!running) return
+        _results.value = SubjectFrame.empty(timestampMs)
+    }
+
+    /** Latest emitted frame timestamp; used to verify the seam in tests. */
+    fun lastTimestamp(): Long = _results.value.timestampMs
 }

@@ -3,6 +3,7 @@ package com.frame.app.platform.camera
 import android.content.Context
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.FocusMeteringAction
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
@@ -19,6 +20,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import java.util.concurrent.Executor
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /**
@@ -37,13 +39,23 @@ import java.util.concurrent.TimeUnit
 class CameraXController(
     private val appContext: Context,
     private val photoStore: PhotoStore = MediaStorePhotoStore(appContext),
+    /**
+     * Optional frame analyzer for the ImageAnalysis use case. Null in a pure
+     * preview/capture configuration; Phase 3 passes an ML Kit analyzer here.
+     * Task 10 passes a no-op [com.frame.app.platform.pose.FrameAnalyzer] to
+     * prove the seam.
+     */
+    private val frameAnalyzer: ImageAnalysis.Analyzer? = null,
 ) : CameraController {
 
     private val mainExecutor: Executor = ContextCompat.getMainExecutor(appContext)
+    // Dedicated single thread for frame analysis, off the main thread.
+    private val analysisExecutor = Executors.newSingleThreadExecutor()
 
     private var cameraProvider: ProcessCameraProvider? = null
     private var preview: Preview? = null
     private var imageCapture: ImageCapture? = null
+    private var imageAnalysis: ImageAnalysis? = null
     private var boundCamera: androidx.camera.core.Camera? = null
 
     // Retained so a lens switch can rebind against the same UI surface.
@@ -102,13 +114,24 @@ class CameraXController(
             .apply { flashMode = currentFlashMode.toImageCaptureFlashMode() }
         imageCapture = captureUseCase
 
+        // ImageAnalysis use case (Phase 3 seam). Only bound when an analyzer is
+        // supplied. KEEP_ONLY_LATEST drops stale frames so detection never
+        // builds a backlog; analysis runs on its own executor off the main thread.
+        val analysisUseCase = frameAnalyzer?.let { analyzer ->
+            ImageAnalysis.Builder()
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .build()
+                .also { it.setAnalyzer(analysisExecutor, analyzer) }
+        }
+        imageAnalysis = analysisUseCase
+
         try {
             provider.unbindAll()
+            val useCases = listOfNotNull(previewUseCase, captureUseCase, analysisUseCase)
             val camera = provider.bindToLifecycle(
                 lifecycleOwner,
                 currentSelector,
-                previewUseCase,
-                captureUseCase,
+                *useCases.toTypedArray(),
             )
             boundCamera = camera
             publishReady(camera)
@@ -151,9 +174,17 @@ class CameraXController(
     /** Release the camera provider binding. Usually unnecessary (lifecycle does
      *  this), but exposed for explicit teardown in tests or edge cases. */
     fun unbind() {
+        imageAnalysis?.clearAnalyzer()
         cameraProvider?.unbindAll()
         boundCamera = null
         _state.update { it.copy(isReady = false) }
+    }
+
+    /** Fully release resources, including the analysis thread. Call when the
+     *  controller is permanently done (not on a routine lifecycle stop). */
+    fun shutdown() {
+        unbind()
+        analysisExecutor.shutdown()
     }
 
     // --- CameraController members. Task 3 implements only readiness/preview; the
