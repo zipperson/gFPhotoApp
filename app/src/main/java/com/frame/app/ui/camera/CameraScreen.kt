@@ -7,7 +7,10 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -44,6 +47,8 @@ import com.frame.app.platform.sensor.DeviceLevelSensor
 import com.frame.app.ui.camera.overlay.CompositionOverlay
 import com.frame.app.viewmodel.OverlayViewModel
 import com.frame.app.viewmodel.OverlayViewModelFactory
+import com.frame.app.viewmodel.StyleViewModel
+import com.frame.app.viewmodel.StyleViewModelFactory
 
 /**
  * The live camera screen with capture (Task 4).
@@ -53,7 +58,10 @@ import com.frame.app.viewmodel.OverlayViewModelFactory
  * where overlays (Task 8) and the rest of the controls (Tasks 5-6) will sit.
  */
 @Composable
-fun CameraScreen(modifier: Modifier = Modifier) {
+fun CameraScreen(
+    modifier: Modifier = Modifier,
+    onOpenStylePicker: () -> Unit = {},
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -95,6 +103,12 @@ fun CameraScreen(modifier: Modifier = Modifier) {
     )
     val overlayPrefs by overlayViewModel.state.collectAsStateWithLifecycle()
     var showSettingsSheet by remember { mutableStateOf(false) }
+
+    // Selected photography style (for the style pill; drives the engine in Task 4).
+    val styleViewModel: StyleViewModel = viewModel(
+        factory = StyleViewModelFactory(context.applicationContext),
+    )
+    val stylePrefs by styleViewModel.state.collectAsStateWithLifecycle()
 
     // Overlay pipeline: renderer builds a spec from current state + settings.
     val overlayRenderer = remember { DefaultOverlayRenderer() }
@@ -193,43 +207,56 @@ fun CameraScreen(modifier: Modifier = Modifier) {
             )
         }
 
-        // Top-left: mode toggle (Minimal/Guided) + overlay settings.
-        CameraModeControls(
-            mode = overlayPrefs.mode,
-            onToggleMode = { overlayViewModel.toggleMode() },
-            onOpenSettings = { showSettingsSheet = true },
+        // Top bar: two rows so nothing overlaps regardless of style-name width.
+        //  Row 1 (centered): style pill.
+        //  Row 2: mode/tune on the left, flash/torch/switch on the right.
+        Column(
             modifier = Modifier
-                .align(Alignment.TopStart)
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(top = 12.dp, start = 12.dp),
-        )
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top,
+            ) {
+                CameraModeControls(
+                    mode = overlayPrefs.mode,
+                    onToggleMode = { overlayViewModel.toggleMode() },
+                    onOpenSettings = { showSettingsSheet = true },
+                )
+                CameraTopControls(
+                    flashMode = cameraState.flashMode,
+                    torchEnabled = cameraState.torchEnabled,
+                    hasFlashUnit = cameraState.hasFlashUnit,
+                    lens = cameraState.lens,
+                    onCycleFlash = { controller.setFlashMode(cameraState.flashMode.next()) },
+                    onToggleTorch = { controller.setTorch(!cameraState.torchEnabled) },
+                    onSwitchLens = {
+                        val target = if (cameraState.lens == CameraLens.BACK) CameraLens.FRONT else CameraLens.BACK
+                        controller.setLens(target)
+                    },
+                )
+            }
+            StylePill(
+                styleName = stylePrefs.style.displayName,
+                onClick = onOpenStylePicker,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+        }
 
-        // Top control bar: flash, torch, lens switch.
-        CameraTopControls(
-            flashMode = cameraState.flashMode,
-            torchEnabled = cameraState.torchEnabled,
-            hasFlashUnit = cameraState.hasFlashUnit,
-            lens = cameraState.lens,
-            onCycleFlash = { controller.setFlashMode(cameraState.flashMode.next()) },
-            onToggleTorch = { controller.setTorch(!cameraState.torchEnabled) },
-            onSwitchLens = {
-                val target = if (cameraState.lens == CameraLens.BACK) CameraLens.FRONT else CameraLens.BACK
-                controller.setLens(target)
-            },
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .statusBarsPadding()
-                .padding(top = 12.dp, end = 12.dp),
-        )
-
-        // Zoom readout, shown only when zoomed past the minimum.
+        // Zoom readout, shown only when zoomed past the minimum. Sits clear of
+        // the two-row top bar.
         if (cameraState.zoomRatio > cameraState.minZoomRatio + 0.05f) {
             ZoomIndicator(
                 zoomRatio = cameraState.zoomRatio,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .statusBarsPadding()
-                    .padding(top = 12.dp),
+                    .padding(top = 120.dp),
             )
         }
 

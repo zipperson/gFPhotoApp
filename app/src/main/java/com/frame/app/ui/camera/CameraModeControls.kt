@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -68,6 +69,40 @@ fun CameraModeControls(
                 .background(Color.Black.copy(alpha = 0.35f))
                 .clickable(onClick = onOpenSettings)
                 .padding(10.dp),
+        )
+    }
+}
+
+/**
+ * Standalone style pill (current style + reopen picker). Placed on its own line
+ * (top-center) so it doesn't compete for width with the mode/flash clusters.
+ */
+@Composable
+fun StylePill(
+    styleName: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(Color.Black.copy(alpha = 0.4f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.AutoAwesome,
+            contentDescription = "Change style",
+            tint = FrameYellow,
+            modifier = Modifier.size(16.dp),
+        )
+        Text(
+            text = styleName,
+            color = Color.White,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(start = 6.dp),
         )
     }
 }
