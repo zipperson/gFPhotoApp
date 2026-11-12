@@ -43,6 +43,10 @@ class MlKitPoseDetector : PoseDetector {
 
     private val running = AtomicBoolean(false)
 
+    // Smooths jitter and holds through brief detection dropouts. Touched only on
+    // the single analysis thread (ML Kit callbacks run on that executor).
+    private val smoother = SubjectSmoother()
+
     @Volatile private var lens: CameraLens = CameraLens.BACK
 
     /** The analyzer to bind to CameraX's ImageAnalysis use case. */
@@ -61,6 +65,8 @@ class MlKitPoseDetector : PoseDetector {
     /** Update the active lens so mirroring is applied correctly after a switch. */
     fun setLens(lens: CameraLens) {
         this.lens = lens
+        // New camera geometry; drop smoothing history so it doesn't lerp across.
+        smoother.reset()
     }
 
     /** Release the underlying ML Kit detector. Call once, when permanently done. */
@@ -96,7 +102,8 @@ class MlKitPoseDetector : PoseDetector {
 
         mlDetector.process(inputImage)
             .addOnSuccessListener { pose ->
-                _results.value = mapPose(pose, uprightWidth, uprightHeight, mirror, timestamp)
+                val raw = mapPose(pose, uprightWidth, uprightHeight, mirror, timestamp)
+                _results.value = smoother.process(raw)
             }
             .addOnFailureListener {
                 // Drop this frame's result; keep the last-known subject state.
