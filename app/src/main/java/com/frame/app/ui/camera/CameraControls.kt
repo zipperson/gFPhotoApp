@@ -14,6 +14,8 @@ import androidx.compose.material.icons.filled.FlashOff
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.FlashlightOff
 import androidx.compose.material.icons.filled.FlashlightOn
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -40,9 +42,11 @@ fun CameraTopControls(
     torchEnabled: Boolean,
     hasFlashUnit: Boolean,
     lens: CameraLens,
+    analysisEnabled: Boolean,
     onCycleFlash: () -> Unit,
     onToggleTorch: () -> Unit,
     onSwitchLens: () -> Unit,
+    onToggleAnalysis: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -50,6 +54,13 @@ fun CameraTopControls(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Composition analysis on/off (also the heat/battery saver).
+        ControlChip(
+            icon = if (analysisEnabled) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+            description = if (analysisEnabled) "Composition guidance on" else "Composition guidance off",
+            active = analysisEnabled,
+            onClick = onToggleAnalysis,
+        )
         if (hasFlashUnit) {
             val (flashIcon, flashLabel) = when (flashMode) {
                 FlashMode.OFF -> Icons.Filled.FlashOff to "Flash off"

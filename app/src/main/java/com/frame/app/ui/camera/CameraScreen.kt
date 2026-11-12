@@ -80,12 +80,23 @@ fun CameraScreen(
         )
     }
     val cameraState by controller.state.collectAsStateWithLifecycle()
-    val subject by poseDetector.results.collectAsStateWithLifecycle(
+    val rawSubject by poseDetector.results.collectAsStateWithLifecycle(
         initialValue = SubjectFrame.empty(0L),
     )
 
+    // Composition analysis on/off. Off = stop ML Kit entirely (no detection,
+    // no composition) to cut heat/battery; preview + capture keep working.
+    var analysisEnabled by remember { mutableStateOf(true) }
+
+    // When analysis is off, present no subject so overlays/feedback clear.
+    val subject = if (analysisEnabled) rawSubject else SubjectFrame.empty(0L)
+
+    DisposableEffect(analysisEnabled) {
+        if (analysisEnabled) poseDetector.start() else poseDetector.stop()
+        onDispose { /* lifecycle stop handled below */ }
+    }
+
     DisposableEffect(Unit) {
-        poseDetector.start()
         onDispose {
             poseDetector.close()
             controller.shutdown()
@@ -263,12 +274,14 @@ fun CameraScreen(
                     torchEnabled = cameraState.torchEnabled,
                     hasFlashUnit = cameraState.hasFlashUnit,
                     lens = cameraState.lens,
+                    analysisEnabled = analysisEnabled,
                     onCycleFlash = { controller.setFlashMode(cameraState.flashMode.next()) },
                     onToggleTorch = { controller.setTorch(!cameraState.torchEnabled) },
                     onSwitchLens = {
                         val target = if (cameraState.lens == CameraLens.BACK) CameraLens.FRONT else CameraLens.BACK
                         controller.setLens(target)
                     },
+                    onToggleAnalysis = { analysisEnabled = !analysisEnabled },
                 )
             }
             StylePill(

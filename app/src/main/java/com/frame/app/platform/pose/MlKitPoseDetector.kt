@@ -49,6 +49,11 @@ class MlKitPoseDetector : PoseDetector {
 
     @Volatile private var lens: CameraLens = CameraLens.BACK
 
+    // Throttle: process at most one frame per MIN_FRAME_INTERVAL_MS (~12Hz).
+    // Caps CPU/GPU work and heat; guidance still feels live. Frames arriving
+    // sooner are dropped (and closed) without running ML Kit.
+    @Volatile private var lastProcessedMs: Long = 0L
+
     /** The analyzer to bind to CameraX's ImageAnalysis use case. */
     val analyzer: ImageAnalysis.Analyzer = ImageAnalysis.Analyzer { imageProxy ->
         processFrame(imageProxy)
@@ -82,6 +87,14 @@ class MlKitPoseDetector : PoseDetector {
             imageProxy.close()
             return
         }
+
+        // Throttle to the target rate: drop (and close) frames that arrive too soon.
+        val now = System.currentTimeMillis()
+        if (now - lastProcessedMs < MIN_FRAME_INTERVAL_MS) {
+            imageProxy.close()
+            return
+        }
+        lastProcessedMs = now
 
         val rotation = imageProxy.imageInfo.rotationDegrees
         // After applying rotation, ML Kit reports coordinates in the upright
@@ -137,5 +150,10 @@ class MlKitPoseDetector : PoseDetector {
             mirrorX = mirror,
             timestampMs = timestampMs,
         )
+    }
+
+    private companion object {
+        // ~12 Hz: smooth enough for live guidance, much lighter than full rate.
+        const val MIN_FRAME_INTERVAL_MS = 80L
     }
 }
