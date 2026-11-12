@@ -39,8 +39,7 @@ import com.frame.app.platform.camera.CameraXController
 import com.frame.app.platform.camera.CaptureResult
 import com.frame.app.platform.camera.next
 import com.frame.app.platform.overlay.DefaultOverlayRenderer
-import com.frame.app.platform.pose.FrameAnalyzer
-import com.frame.app.platform.pose.NoOpPoseDetector
+import com.frame.app.platform.pose.MlKitPoseDetector
 import com.frame.app.platform.sensor.DeviceLevelSensor
 import com.frame.app.ui.camera.overlay.CompositionOverlay
 import com.frame.app.viewmodel.OverlayViewModel
@@ -58,27 +57,32 @@ fun CameraScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    // Phase 3 seam: a no-op pose detector fed by the ImageAnalysis use case.
-    // Proves camera -> analyzer -> detector -> results flows end to end today;
-    // Phase 3 swaps NoOpPoseDetector + analyzer body for ML Kit, untouched here.
-    val poseDetector = remember { NoOpPoseDetector() }
-    val frameAnalyzer = remember {
-        FrameAnalyzer(onFrame = { timestampMs, _ -> poseDetector.onFrame(timestampMs) })
-    }
+    // Phase 3: ML Kit pose detection feeding the ImageAnalysis use case. Its
+    // analyzer runs per frame; detected subjects flow out via `results` and into
+    // the overlay. (NoOpPoseDetector/FrameAnalyzer remain for tests/fallback.)
+    val poseDetector = remember { MlKitPoseDetector() }
     val controller = remember {
         CameraXController(
             appContext = context.applicationContext,
-            frameAnalyzer = frameAnalyzer,
+            frameAnalyzer = poseDetector.analyzer,
         )
     }
     val cameraState by controller.state.collectAsStateWithLifecycle()
+    val subject by poseDetector.results.collectAsStateWithLifecycle(
+        initialValue = SubjectFrame.empty(0L),
+    )
 
     DisposableEffect(Unit) {
         poseDetector.start()
         onDispose {
-            poseDetector.stop()
+            poseDetector.close()
             controller.shutdown()
         }
+    }
+
+    // Keep the detector's lens in sync so front-camera mirroring stays correct.
+    LaunchedEffect(cameraState.lens) {
+        poseDetector.setLens(cameraState.lens)
     }
 
     // Device level/tilt sensor.
@@ -95,7 +99,7 @@ fun CameraScreen(modifier: Modifier = Modifier) {
     // Overlay pipeline: renderer builds a spec from current state + settings.
     val overlayRenderer = remember { DefaultOverlayRenderer() }
     val overlaySpec = overlayRenderer.buildSpec(
-        subject = SubjectFrame.empty(0L),       // Phase 3 feeds real detections
+        subject = subject,                       // live ML Kit detection (Phase 3)
         tilt = tilt,
         composition = CompositionResult.NONE,   // Phase 4 feeds real results
         settings = overlayPrefs.settings,
