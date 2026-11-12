@@ -26,8 +26,11 @@ import kotlin.math.abs
  */
 class DefaultCompositionEngine(
     private val thresholds: CompositionThresholds = CompositionThresholds.DEFAULT,
-    private val advisor: CompositionAdvisor = CompositionAdvisor(),
+    advisor: CompositionAdvisor? = null,
 ) : CompositionEngine {
+
+    // Advisor shares the engine's thresholds so advice matches the active style.
+    private val advisor: CompositionAdvisor = advisor ?: CompositionAdvisor(thresholds)
 
     override fun evaluate(
         subject: SubjectFrame,
