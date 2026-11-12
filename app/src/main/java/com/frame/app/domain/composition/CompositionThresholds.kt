@@ -88,6 +88,45 @@ data class CompositionThresholds(
             idealVerticalCenter = 0.5f,
         )
 
+        /**
+         * Low-angle dramatic look: camera held low, subject tall and placed very
+         * low in the frame with lots of sky/space above. Like the aesthetic
+         * preset but pushes the subject even lower and allows more headroom.
+         */
+        val LOW_ANGLE = CompositionThresholds(
+            headroomMin = 0.06f,
+            headroomMax = 0.35f,
+            headroomTooMuch = 0.55f,       // big space above is the point
+            thirdsTolerance = 0.10f,
+            centerTolerance = 0.05f,
+            sizeTooSmall = 0.12f,
+            sizeTooLarge = 0.85f,
+            sizeIdealMin = 0.4f,
+            sizeIdealMax = 0.8f,
+            levelToleranceDegrees = 4.0f,
+            preferLowSubject = true,
+            idealVerticalCenter = 0.68f,   // subject sits notably low
+        )
+
+        /**
+         * Centered / symmetrical: subject intentionally dead-center, balanced.
+         * Thirds are not rewarded; center placement is the goal, level matters.
+         */
+        val CENTERED_SYMMETRICAL = CompositionThresholds(
+            headroomMin = 0.04f,
+            headroomMax = 0.25f,
+            headroomTooMuch = 0.40f,
+            thirdsTolerance = 0.0f,        // thirds give no credit here
+            centerTolerance = 0.10f,       // generous center band = "good"
+            sizeTooSmall = 0.18f,
+            sizeTooLarge = 0.9f,
+            sizeIdealMin = 0.35f,
+            sizeIdealMax = 0.8f,
+            levelToleranceDegrees = 2.5f,  // symmetry wants a level frame
+            preferLowSubject = false,
+            idealVerticalCenter = 0.5f,
+        )
+
         /** Default used by the engine. */
         val DEFAULT = AESTHETIC_FULL_BODY
     }
