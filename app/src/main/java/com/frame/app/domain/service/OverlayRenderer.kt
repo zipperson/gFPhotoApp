@@ -26,6 +26,7 @@ interface OverlayRenderer {
         composition: CompositionResult,
         settings: OverlaySettings,
         target: TargetSpec? = null,
+        aiTarget: TargetSpec? = null,
     ): OverlaySpec
 }
 
@@ -78,6 +79,9 @@ data class OverlaySpec(
     val landmarks: List<com.frame.app.domain.model.NormalizedLandmark> = emptyList(),
     /** Target placement guidance: where the subject should be + alignment. */
     val target: TargetSpec? = null,
+    /** AI-suggested subject placement, drawn distinctly (cyan), greening when
+     *  the subject lines up. Null when there's no active AI suggestion. */
+    val aiTarget: TargetSpec? = null,
     val referenceOutline: com.frame.app.domain.model.NormalizedRect?,
     val opacity: Float,
 ) {
@@ -89,6 +93,7 @@ data class OverlaySpec(
             subjectBox = null,
             landmarks = emptyList(),
             target = null,
+            aiTarget = null,
             referenceOutline = null,
             opacity = 0.6f,
         )

@@ -17,8 +17,23 @@ data class SceneAdvice(
     val background: String?,
     /** One-line overall suggestion / mood read. */
     val overall: String?,
+    /**
+     * Where the AI suggests the subject should sit, in normalized frame coords
+     * [0,1] (left, top, right, bottom). Null when the model didn't provide one.
+     * Rendered on the overlay as a target zone so the advice is visual, not just
+     * text.
+     */
+    val suggestedTarget: SuggestedTarget?,
     /** Full model response text, for display fallback / debugging. */
     val rawText: String,
+)
+
+/** Normalized target rectangle (0..1) the AI suggests for the subject. */
+data class SuggestedTarget(
+    val left: Float,
+    val top: Float,
+    val right: Float,
+    val bottom: Float,
 )
 
 /**
@@ -46,4 +61,10 @@ data class SceneContext(
     val styleName: String,
     val styleTagline: String,
     val ruleSummary: String,
+    /**
+     * Concrete, style-specific framing guidance (derived from the style's own
+     * composition rules) so the model's advice + suggested target genuinely
+     * follow the chosen look rather than generic portraiture.
+     */
+    val styleBrief: String = "",
 )

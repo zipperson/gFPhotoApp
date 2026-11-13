@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -43,6 +44,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frame.app.domain.composition.CompositionTarget
 import com.frame.app.domain.composition.DefaultCompositionEngine
+import com.frame.app.domain.composition.toBrief
 import com.frame.app.domain.composition.toThresholds
 import com.frame.app.domain.scene.SceneContext
 import com.frame.app.domain.service.TargetSpec
@@ -59,6 +61,7 @@ import com.frame.app.platform.sensor.DeviceLevelSensor
 import com.frame.app.ui.camera.overlay.CompositionOverlay
 import com.frame.app.viewmodel.OverlayViewModel
 import com.frame.app.viewmodel.OverlayViewModelFactory
+import com.frame.app.viewmodel.SceneAdviceUiState
 import com.frame.app.viewmodel.SceneAdviceViewModel
 import com.frame.app.viewmodel.SceneAdviceViewModelFactory
 import com.frame.app.viewmodel.StyleViewModel
@@ -169,14 +172,44 @@ fun CameraScreen(
         )
     } else null
 
+    // AI-suggested target persists on the preview (independent of the advice
+    // sheet) so the user can move the camera to line up with it. Cleared via the
+    // dismiss control or when a new request starts.
+    var aiTarget by remember { mutableStateOf<com.frame.app.domain.model.NormalizedRect?>(null) }
+
+    // When a successful analysis arrives, adopt its suggested target.
+    LaunchedEffect(sceneAdviceState) {
+        val success = (sceneAdviceState as? SceneAdviceUiState.Ready)?.result
+                as? com.frame.app.domain.scene.SceneAnalysisResult.Success
+        success?.advice?.suggestedTarget?.let {
+            aiTarget = com.frame.app.domain.model.NormalizedRect(it.left, it.top, it.right, it.bottom)
+        }
+    }
+
+    // Is the live subject lined up with the AI target? Drives the "nailed it"
+    // confirmation and greens the AI zone.
+    val aiAligned = aiTarget?.let { t ->
+        subject.hasSubject && CompositionTarget.isAligned(subject, t)
+    } ?: false
+
+
+
     // Overlay pipeline: renderer builds a spec from current state + settings.
     val overlayRenderer = remember { DefaultOverlayRenderer() }
+    val aiTargetSpec = aiTarget?.let { rect ->
+        TargetSpec(
+            targetRect = rect,
+            subjectCenter = subject.boundingBox?.center,
+            aligned = aiAligned,
+        )
+    }
     val overlaySpec = overlayRenderer.buildSpec(
         subject = subject,                       // live ML Kit detection (Phase 3)
         tilt = tilt,
         composition = composition,               // live composition result (Phase 4)
         settings = overlayPrefs.settings,
         target = target,
+        aiTarget = aiTargetSpec,
     )
 
     // Transient capture state, local to the screen.
@@ -197,6 +230,14 @@ fun CameraScreen(
             kotlinx.coroutines.delay(90)
             showFlash = false
         }
+    }
+
+    // Fire a one-shot confirmation the moment the subject lines up with the AI
+    // target (declared here so `feedback` is in scope).
+    var aiWasAligned by remember { mutableStateOf(false) }
+    LaunchedEffect(aiAligned) {
+        if (aiAligned && !aiWasAligned) feedback = "Matched the AI shot — take it!"
+        aiWasAligned = aiAligned
     }
 
     Box(
@@ -335,16 +376,23 @@ fun CameraScreen(
         }
 
         // AI advice button (Guided mode), bottom-right above the shutter row.
+        // When an AI target is active, this becomes a "clear" control instead.
         if (overlayPrefs.mode == CameraMode.GUIDED) {
             AiAdviceButton(
+                active = aiTarget != null,
                 onClick = {
-                    sceneAdviceViewModel.requestAdvice(
-                        SceneContext(
-                            styleName = stylePrefs.style.displayName,
-                            styleTagline = stylePrefs.style.tagline,
-                            ruleSummary = composition.toRuleSummary(),
+                    if (aiTarget != null) {
+                        aiTarget = null
+                    } else {
+                        sceneAdviceViewModel.requestAdvice(
+                            SceneContext(
+                                styleName = stylePrefs.style.displayName,
+                                styleTagline = stylePrefs.style.tagline,
+                                ruleSummary = composition.toRuleSummary(),
+                                styleBrief = stylePrefs.style.toBrief(),
+                            )
                         )
-                    )
+                    }
                 },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
@@ -368,13 +416,13 @@ fun CameraScreen(
         }
 
         // Transient confirmation / error.
+        // Transient confirmation ("Photo saved", "Matched the AI shot") — centered
+        // on screen so it never collides with the busy top HUD.
         AnimatedVisibility(
             visible = feedback != null,
             enter = fadeIn(),
             exit = fadeOut(),
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 48.dp),
+            modifier = Modifier.align(Alignment.Center),
         ) {
             CaptureFeedbackPill(text = feedback.orEmpty())
         }
@@ -425,9 +473,10 @@ private fun com.frame.app.domain.model.CompositionResult.toRuleSummary(): String
     }
 }
 
-/** Sparkle button that requests on-demand AI scene advice. */
+/** Sparkle button that requests on-demand AI advice; becomes a "clear" control
+ *  while an AI target is active on screen. */
 @Composable
-private fun AiAdviceButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun AiAdviceButton(active: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(50))
@@ -437,13 +486,13 @@ private fun AiAdviceButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            imageVector = Icons.Filled.AutoAwesome,
-            contentDescription = "Get AI advice",
+            imageVector = if (active) Icons.Filled.Close else Icons.Filled.AutoAwesome,
+            contentDescription = if (active) "Clear AI target" else "Get AI advice",
             tint = com.frame.app.ui.theme.FrameYellow,
             modifier = Modifier.size(18.dp),
         )
         Text(
-            text = "AI advice",
+            text = if (active) "Clear AI" else "AI advice",
             color = Color.White,
             style = MaterialTheme.typography.labelLarge,
             modifier = Modifier.padding(start = 6.dp),

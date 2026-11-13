@@ -103,4 +103,32 @@ class OpenAiResponseParserTest {
         assertNull(advice.cameraMovement) // blank -> null
         assertEquals("Good", advice.overall)
     }
+
+    @Test
+    fun parse_targetObject_populatesSuggestedTarget() {
+        val response = """
+            {"choices":[{"message":{"content":"{\"overall\":\"ok\",\"target\":{\"left\":0.2,\"top\":0.3,\"right\":0.5,\"bottom\":0.95}}"}}]}
+        """.trimIndent()
+        val t = parser.parse(response)!!.suggestedTarget!!
+        assertEquals(0.2f, t.left, 1e-4f)
+        assertEquals(0.3f, t.top, 1e-4f)
+        assertEquals(0.5f, t.right, 1e-4f)
+        assertEquals(0.95f, t.bottom, 1e-4f)
+    }
+
+    @Test
+    fun parse_invertedTarget_isRejected() {
+        val response = """
+            {"choices":[{"message":{"content":"{\"overall\":\"ok\",\"target\":{\"left\":0.8,\"top\":0.3,\"right\":0.2,\"bottom\":0.95}}"}}]}
+        """.trimIndent()
+        assertNull(parser.parse(response)!!.suggestedTarget)
+    }
+
+    @Test
+    fun parse_noTarget_isNull() {
+        val response = """
+            {"choices":[{"message":{"content":"{\"overall\":\"ok\"}"}}]}
+        """.trimIndent()
+        assertNull(parser.parse(response)!!.suggestedTarget)
+    }
 }

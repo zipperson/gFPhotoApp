@@ -31,6 +31,7 @@ class FakeSceneAnalyzer(
         lighting = "Light is a touch harsh from the left — turn her slightly toward it.",
         background = "Lots of empty wall on the right; shift left to use the doorway as a frame.",
         overall = "Strong aesthetic full-body setup — lower the phone for taller proportions.",
+        suggestedTarget = SuggestedTarget(0.20f, 0.30f, 0.45f, 0.95f),
         rawText = "Canned advice (FakeSceneAnalyzer).",
     ),
 ) : SceneAnalyzer {

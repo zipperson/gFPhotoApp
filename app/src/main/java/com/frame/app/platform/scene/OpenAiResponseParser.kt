@@ -1,6 +1,7 @@
 package com.frame.app.platform.scene
 
 import com.frame.app.domain.scene.SceneAdvice
+import com.frame.app.domain.scene.SuggestedTarget
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -35,6 +36,7 @@ class OpenAiResponseParser(
                 lighting = inner.stringOrNull("lighting"),
                 background = inner.stringOrNull("background"),
                 overall = inner.stringOrNull("overall"),
+                suggestedTarget = parseTarget(inner["target"]),
                 rawText = trimmed,
             )
         } else {
@@ -44,9 +46,24 @@ class OpenAiResponseParser(
                 lighting = null,
                 background = null,
                 overall = trimmed,
+                suggestedTarget = null,
                 rawText = trimmed,
             )
         }
+    }
+
+    /** Parse the "target" object into a validated, in-bounds SuggestedTarget. */
+    private fun parseTarget(element: kotlinx.serialization.json.JsonElement?): SuggestedTarget? {
+        val obj = runCatching { element?.jsonObject }.getOrNull() ?: return null
+        fun f(key: String): Float? =
+            obj[key]?.jsonPrimitive?.content?.toFloatOrNull()?.coerceIn(0f, 1f)
+        val left = f("left") ?: return null
+        val top = f("top") ?: return null
+        val right = f("right") ?: return null
+        val bottom = f("bottom") ?: return null
+        // Reject degenerate/inverted boxes.
+        if (right <= left || bottom <= top) return null
+        return SuggestedTarget(left, top, right, bottom)
     }
 
     /** Pull choices[0].message.content out of the response envelope. */

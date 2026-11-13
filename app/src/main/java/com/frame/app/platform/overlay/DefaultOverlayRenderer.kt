@@ -26,6 +26,7 @@ class DefaultOverlayRenderer : OverlayRenderer {
         composition: CompositionResult,
         settings: OverlaySettings,
         target: TargetSpec?,
+        aiTarget: TargetSpec?,
     ): OverlaySpec {
         val horizon = if (settings.showHorizon && tilt.isAvailable) {
             HorizonSpec(rollDegrees = tilt.rollDegrees, isLevel = tilt.isLevel())
@@ -42,7 +43,8 @@ class DefaultOverlayRenderer : OverlayRenderer {
             landmarks = landmarks,
             // Target guidance rides with subject-box visibility.
             target = if (settings.showSubjectBox) target else null,
-            referenceOutline = null, // Phase 5
+            aiTarget = aiTarget, // AI suggestion shows regardless of guide toggles
+            referenceOutline = null, // Phase 5 reference feature
             opacity = settings.opacity.coerceIn(0f, 1f),
         )
     }

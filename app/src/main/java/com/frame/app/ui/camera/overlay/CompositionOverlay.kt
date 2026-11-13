@@ -21,6 +21,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 private val LevelGreen = Color(0xFF4CAF50)
+private val AiCyan = Color(0xFF29D6E6)
 
 /**
  * Single Canvas that renders the whole composition overlay from an [OverlaySpec].
@@ -101,6 +102,43 @@ fun CompositionOverlay(
                 val from = Offset(map.x(t.subjectCenter.x), map.y(t.subjectCenter.y))
                 val to = Offset(map.x(t.targetRect.centerX), map.y(t.targetRect.centerY))
                 drawGuidanceArrow(from, to, FrameYellow.copy(alpha = spec.opacity))
+            }
+        }
+
+        // AI-suggested target zone (distinct cyan; greens when aligned), with an
+        // arrow from the subject toward it and a label that confirms on success.
+        spec.aiTarget?.let { t ->
+            val r = t.targetRect
+            val color = if (t.aligned) LevelGreen else AiCyan
+            val tl = Offset(map.x(r.left), map.y(r.top))
+            val sz = Size(r.width * size.width, r.height * size.height)
+            drawRoundRect(
+                color = color,
+                topLeft = tl,
+                size = sz,
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(24f, 24f),
+                style = Stroke(width = 5f),
+            )
+            val caption = if (t.aligned) "Nailed it!" else "AI suggests"
+            val layout = textMeasurer.measure(
+                text = caption,
+                style = TextStyle(
+                    color = color,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    background = Color.Black.copy(alpha = 0.5f),
+                ),
+            )
+            val lx = (map.x(r.centerX) - layout.size.width / 2f)
+                .coerceIn(0f, size.width - layout.size.width)
+            val ly = (tl.y - layout.size.height - 8f).let { if (it < 0f) tl.y + 8f else it }
+            drawText(layout, topLeft = Offset(lx, ly))
+
+            // Arrow from the subject toward the AI target until aligned.
+            if (!t.aligned && t.subjectCenter != null) {
+                val from = Offset(map.x(t.subjectCenter.x), map.y(t.subjectCenter.y))
+                val to = Offset(map.x(r.centerX), map.y(r.centerY))
+                drawGuidanceArrow(from, to, AiCyan)
             }
         }
 

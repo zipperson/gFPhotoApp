@@ -58,16 +58,23 @@ object OpenAiRequestBuilder {
         (${context.styleTagline}). Our on-device analysis currently reads:
         ${context.ruleSummary}.
 
+        STYLE GUIDE for "${context.styleName}": ${context.styleBrief}
+        Your advice and the target box MUST follow this style guide.
+
         Look at the image and give concise, practical guidance to improve this
         exact shot for that style. Focus on how to MOVE THE CAMERA/PHONE and the
         scene — not editing. Call out lighting and background issues.
 
-        Respond with a JSON object with these string fields:
-        - "cameraMovement": the single most important camera/positioning change
-        - "lighting": one lighting observation + fix
-        - "background": one background/environment observation + fix
-        - "overall": a one-line overall tip
-        Keep each field to one short sentence, friendly and specific.
+        Respond with a JSON object with these fields:
+        - "cameraMovement": (string) the single most important camera/positioning change
+        - "lighting": (string) one lighting observation + fix
+        - "background": (string) one background/environment observation + fix
+        - "overall": (string) a one-line overall tip
+        - "target": (object) where the SUBJECT should be placed in the final frame,
+          as normalized coordinates 0..1 with keys "left","top","right","bottom"
+          (0,0 = top-left of the image; 1,1 = bottom-right). Give your best
+          estimate of the ideal subject box for this style.
+        Keep each text field to one short sentence, friendly and specific.
     """.trimIndent()
 
     private const val SYSTEM =
