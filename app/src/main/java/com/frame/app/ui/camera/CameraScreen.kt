@@ -7,11 +7,17 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material3.Icon
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -27,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -37,6 +44,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frame.app.domain.composition.CompositionTarget
 import com.frame.app.domain.composition.DefaultCompositionEngine
 import com.frame.app.domain.composition.toThresholds
+import com.frame.app.domain.scene.SceneContext
 import com.frame.app.domain.service.TargetSpec
 import com.frame.app.domain.model.CameraMode
 import com.frame.app.domain.model.SubjectFrame
@@ -51,6 +59,8 @@ import com.frame.app.platform.sensor.DeviceLevelSensor
 import com.frame.app.ui.camera.overlay.CompositionOverlay
 import com.frame.app.viewmodel.OverlayViewModel
 import com.frame.app.viewmodel.OverlayViewModelFactory
+import com.frame.app.viewmodel.SceneAdviceViewModel
+import com.frame.app.viewmodel.SceneAdviceViewModelFactory
 import com.frame.app.viewmodel.StyleViewModel
 import com.frame.app.viewmodel.StyleViewModelFactory
 
@@ -124,6 +134,15 @@ fun CameraScreen(
         factory = StyleViewModelFactory(context.applicationContext),
     )
     val stylePrefs by styleViewModel.state.collectAsStateWithLifecycle()
+
+    // AI scene advice (Phase 5): on-demand OpenAI analysis of a captured frame.
+    val sceneAdviceViewModel: SceneAdviceViewModel = viewModel(
+        factory = SceneAdviceViewModelFactory(
+            appContext = context.applicationContext,
+            captureFrame = { suspendCaptureFrame(controller) },
+        ),
+    )
+    val sceneAdviceState by sceneAdviceViewModel.state.collectAsStateWithLifecycle()
 
     // Composition engine, tuned to the selected style. Recreated when the style
     // changes so advice/scoring tracks the chosen look. Pure + cheap.
@@ -315,6 +334,25 @@ fun CameraScreen(
             )
         }
 
+        // AI advice button (Guided mode), bottom-right above the shutter row.
+        if (overlayPrefs.mode == CameraMode.GUIDED) {
+            AiAdviceButton(
+                onClick = {
+                    sceneAdviceViewModel.requestAdvice(
+                        SceneContext(
+                            styleName = stylePrefs.style.displayName,
+                            styleTagline = stylePrefs.style.tagline,
+                            ruleSummary = composition.toRuleSummary(),
+                        )
+                    )
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
+                    .padding(end = 24.dp, bottom = 44.dp),
+            )
+        }
+
         // Exposure slider, sitting just above the shutter when supported.
         if (cameraState.supportsExposure) {
             ExposureSlider(
@@ -353,11 +391,65 @@ fun CameraScreen(
             onDismiss = { showSettingsSheet = false },
         )
     }
+
+    // AI advice result sheet (loading / result / offline / error).
+    SceneAdviceSheet(
+        state = sceneAdviceState,
+        onDismiss = { sceneAdviceViewModel.dismiss() },
+    )
 }
 
 /** Portrait preview aspect ratio (width / height), ~9:16, used for composition
  *  evaluation. The exact value isn't critical for the current rules. */
 private const val PREVIEW_ASPECT_RATIO = 9f / 16f
+
+/** Bridge the controller's callback-based frame capture to a suspend function. */
+private suspend fun suspendCaptureFrame(controller: CameraXController): ByteArray? =
+    kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+        controller.captureForAnalysis { bytes ->
+            if (cont.isActive) cont.resumeWith(Result.success(bytes))
+        }
+    }
+
+/** Short, model-friendly summary of the current rule-engine read for context. */
+private fun com.frame.app.domain.model.CompositionResult.toRuleSummary(): String {
+    val scorePart = score?.let { "score $it" } ?: "no subject yet"
+    val topIssues = aspects
+        .filter { it.verdict == com.frame.app.domain.model.AspectVerdict.NEEDS_ADJUSTMENT }
+        .mapNotNull { it.detail }
+        .take(2)
+        .joinToString("; ")
+    return buildString {
+        append("rating ").append(overall.name).append(", ").append(scorePart)
+        if (topIssues.isNotEmpty()) append("; issues: ").append(topIssues)
+    }
+}
+
+/** Sparkle button that requests on-demand AI scene advice. */
+@Composable
+private fun AiAdviceButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(Color.Black.copy(alpha = 0.55f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.AutoAwesome,
+            contentDescription = "Get AI advice",
+            tint = com.frame.app.ui.theme.FrameYellow,
+            modifier = Modifier.size(18.dp),
+        )
+        Text(
+            text = "AI advice",
+            color = Color.White,
+            style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.padding(start = 6.dp),
+        )
+    }
+}
 
 @Composable
 private fun CaptureFeedbackPill(text: String, modifier: Modifier = Modifier) {

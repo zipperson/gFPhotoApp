@@ -5,6 +5,10 @@
     <!-- Camera is essential to FRAME. -->
     <uses-permission android:name="android.permission.CAMERA" />
 
+    <!-- AI scene advice (optional, online-only) calls the OpenAI API. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <!-- On API 26-28 MediaStore image writes still require this. On 29+ scoped
          storage covers image writes, so we cap maxSdkVersion at 28. -->
     <uses-permission
