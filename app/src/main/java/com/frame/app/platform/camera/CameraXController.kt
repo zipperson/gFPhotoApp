@@ -6,6 +6,7 @@ import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.core.TorchState
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -332,8 +333,36 @@ class CameraXController(
         )
     }
 
+    /**
+     * Capture one frame to memory (not the gallery) for AI scene analysis,
+     * downscaled + JPEG-compressed to keep the upload small/cheap. Delivers the
+     * bytes on a background thread via [onBytes]; null on failure.
+     */
+    fun captureForAnalysis(onBytes: (ByteArray?) -> Unit) {
+        val capture = imageCapture ?: run { onBytes(null); return }
+        capture.takePicture(
+            analysisExecutor,
+            object : ImageCapture.OnImageCapturedCallback() {
+                override fun onCaptureSuccess(image: ImageProxy) {
+                    val bytes = runCatching {
+                        FrameEncoder.toDownscaledJpeg(image, MAX_ANALYSIS_EDGE, ANALYSIS_JPEG_QUALITY)
+                    }.getOrNull()
+                    image.close()
+                    onBytes(bytes)
+                }
+
+                override fun onError(exception: ImageCaptureException) {
+                    onBytes(null)
+                }
+            },
+        )
+    }
+
     private companion object {
         const val FOCUS_AUTO_CANCEL_SECONDS = 4L
+        // Keep the analysis upload small: longest edge ~1024px, moderate quality.
+        const val MAX_ANALYSIS_EDGE = 1024
+        const val ANALYSIS_JPEG_QUALITY = 80
     }
 }
 

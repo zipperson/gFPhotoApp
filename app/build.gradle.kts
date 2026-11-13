@@ -3,6 +3,21 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.kapt)
+    alias(libs.plugins.kotlin.serialization)
+}
+
+// Read the OpenAI API key from local.properties (gitignored) so it never lands
+// in version control. Absent key -> empty string; the app detects this and
+// treats AI scene analysis as unavailable. Parsed by hand to avoid java.util
+// resolution quirks in the Gradle Kotlin DSL classpath.
+val openAiApiKey: String = run {
+    val f = rootProject.file("local.properties")
+    if (!f.exists()) return@run ""
+    f.readLines()
+        .firstOrNull { it.trimStart().startsWith("OPENAI_API_KEY") && it.contains("=") }
+        ?.substringAfter("=")
+        ?.trim()
+        ?: ""
 }
 
 android {
@@ -20,6 +35,9 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        // Exposed to code as BuildConfig.OPENAI_API_KEY. Quoted string literal.
+        buildConfigField("String", "OPENAI_API_KEY", "\"$openAiApiKey\"")
     }
 
     buildTypes {
@@ -43,6 +61,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {
@@ -106,6 +125,10 @@ dependencies {
 
     // Permissions
     implementation(libs.accompanist.permissions)
+
+    // Networking + JSON (OpenAI scene analyzer)
+    implementation(libs.okhttp)
+    implementation(libs.kotlinx.serialization.json)
 
     // Unit testing
     testImplementation(libs.junit)
