@@ -82,6 +82,86 @@ class SceneAdviceViewModelTest {
         assertTrue(vm.state.value is SceneAdviceUiState.Idle)
     }
 
+    private fun onlineVm(source: suspend () -> ByteArray? = { ByteArray(4) }) =
+        SceneAdviceViewModel(FakeSceneAnalyzer(), source, { true })
+
+    @Test
+    fun success_setsActiveAdvice() = runTest(dispatcher) {
+        val vm = onlineVm()
+        vm.requestAdvice(context)
+        advanceUntilIdle()
+        assertTrue(vm.activeAdvice.value != null)
+    }
+
+    @Test
+    fun dismiss_keepsActiveAdvice() = runTest(dispatcher) {
+        val vm = onlineVm()
+        vm.requestAdvice(context)
+        advanceUntilIdle()
+        vm.dismiss()
+        assertTrue(vm.state.value is SceneAdviceUiState.Idle)
+        assertTrue("target must survive closing the sheet", vm.activeAdvice.value != null)
+    }
+
+    @Test
+    fun reopen_showsLastAdviceWithoutNewRequest() = runTest(dispatcher) {
+        var captures = 0
+        val vm = onlineVm { captures++; ByteArray(4) }
+        vm.requestAdvice(context)
+        advanceUntilIdle()
+        vm.dismiss()
+        vm.reopen()
+
+        val state = vm.state.value
+        assertTrue(state is SceneAdviceUiState.Ready)
+        assertTrue((state as SceneAdviceUiState.Ready).result is SceneAnalysisResult.Success)
+        assertTrue("reopen must not capture/analyze again", captures == 1)
+    }
+
+    @Test
+    fun reopen_withNoAdvice_isNoOp() = runTest(dispatcher) {
+        val vm = onlineVm()
+        vm.reopen()
+        assertTrue(vm.state.value is SceneAdviceUiState.Idle)
+    }
+
+    @Test
+    fun clearAdvice_removesAdviceAndClosesSheet() = runTest(dispatcher) {
+        val vm = onlineVm()
+        vm.requestAdvice(context)
+        advanceUntilIdle()
+        vm.clearAdvice()
+        assertTrue(vm.activeAdvice.value == null)
+        assertTrue(vm.state.value is SceneAdviceUiState.Idle)
+    }
+
+    @Test
+    fun failedRequest_doesNotReplaceExistingAdvice() = runTest(dispatcher) {
+        var ok = true
+        val vm = onlineVm { if (ok) ByteArray(4) else null }
+        vm.requestAdvice(context)
+        advanceUntilIdle()
+        val first = vm.activeAdvice.value
+        vm.dismiss()
+
+        ok = false
+        vm.requestAdvice(context)
+        advanceUntilIdle()
+        assertTrue(vm.activeAdvice.value === first)
+    }
+
+    @Test
+    fun setCaptureSource_replacesStaleSource() = runTest(dispatcher) {
+        // Simulates returning from the gallery: the old camera is gone and a
+        // new frame source must be used for the next request.
+        val vm = onlineVm { null } // stale source: always fails
+        vm.setCaptureSource { ByteArray(4) }
+        vm.requestAdvice(context)
+        advanceUntilIdle()
+        val result = (vm.state.value as SceneAdviceUiState.Ready).result
+        assertTrue(result is SceneAnalysisResult.Success)
+    }
+
     @Test
     fun analyzerError_propagatesAsReadyError() = runTest(dispatcher) {
         val failing = object : SceneAnalyzer {

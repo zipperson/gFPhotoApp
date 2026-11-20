@@ -134,11 +134,16 @@ fun CompositionOverlay(
             val ly = (tl.y - layout.size.height - 8f).let { if (it < 0f) tl.y + 8f else it }
             drawText(layout, topLeft = Offset(lx, ly))
 
-            // Arrow from the subject toward the AI target until aligned.
-            if (!t.aligned && t.subjectCenter != null) {
-                val from = Offset(map.x(t.subjectCenter.x), map.y(t.subjectCenter.y))
-                val to = Offset(map.x(r.centerX), map.y(r.centerY))
-                drawGuidanceArrow(from, to, AiCyan)
+            // Arrow from screen center -> target center, telling the user which
+            // way to move the camera. Drawn whenever the target isn't centered.
+            val center = Offset(size.width / 2f, size.height / 2f)
+            val targetCenter = Offset(map.x(r.centerX), map.y(r.centerY))
+            val dist = kotlin.math.hypot(targetCenter.x - center.x, targetCenter.y - center.y)
+            if (dist > 40f) {
+                drawGuidanceArrow(center, targetCenter, AiCyan)
+            } else {
+                // Target is essentially centered — mark the center as "good spot".
+                drawCircle(AiCyan, radius = 10f, center = center, style = Stroke(width = 4f))
             }
         }
 

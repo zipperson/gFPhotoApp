@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -36,6 +37,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -58,6 +61,7 @@ import com.frame.app.platform.camera.next
 import com.frame.app.platform.overlay.DefaultOverlayRenderer
 import com.frame.app.platform.pose.MlKitPoseDetector
 import com.frame.app.platform.sensor.DeviceLevelSensor
+import com.frame.app.ui.theme.FrameYellow
 import com.frame.app.ui.camera.overlay.CompositionOverlay
 import com.frame.app.viewmodel.OverlayViewModel
 import com.frame.app.viewmodel.OverlayViewModelFactory
@@ -78,6 +82,11 @@ import com.frame.app.viewmodel.StyleViewModelFactory
 fun CameraScreen(
     modifier: Modifier = Modifier,
     onOpenStylePicker: () -> Unit = {},
+    /** URI of the most recent FRAME photo, shown as the shutter-side thumbnail. */
+    latestPhotoUri: String? = null,
+    onOpenGallery: () -> Unit = {},
+    /** Called after a photo is saved so the gallery/thumbnail can refresh. */
+    onPhotoCaptured: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -146,6 +155,14 @@ fun CameraScreen(
         ),
     )
     val sceneAdviceState by sceneAdviceViewModel.state.collectAsStateWithLifecycle()
+    val activeAdvice by sceneAdviceViewModel.activeAdvice.collectAsStateWithLifecycle()
+
+    // The ViewModel outlives this screen (e.g. across a gallery visit) but the
+    // controller doesn't, so always point frame capture at the *current* one.
+    DisposableEffect(controller) {
+        sceneAdviceViewModel.setCaptureSource { suspendCaptureFrame(controller) }
+        onDispose { sceneAdviceViewModel.setCaptureSource { null } }
+    }
 
     // Composition engine, tuned to the selected style. Recreated when the style
     // changes so advice/scoring tracks the chosen look. Pure + cheap.
@@ -175,15 +192,10 @@ fun CameraScreen(
     // AI-suggested target persists on the preview (independent of the advice
     // sheet) so the user can move the camera to line up with it. Cleared via the
     // dismiss control or when a new request starts.
-    var aiTarget by remember { mutableStateOf<com.frame.app.domain.model.NormalizedRect?>(null) }
-
-    // When a successful analysis arrives, adopt its suggested target.
-    LaunchedEffect(sceneAdviceState) {
-        val success = (sceneAdviceState as? SceneAdviceUiState.Ready)?.result
-                as? com.frame.app.domain.scene.SceneAnalysisResult.Success
-        success?.advice?.suggestedTarget?.let {
-            aiTarget = com.frame.app.domain.model.NormalizedRect(it.left, it.top, it.right, it.bottom)
-        }
+    // Derived from the ViewModel's active advice, so it survives navigating to
+    // the gallery and back; cleared only via the Clear control.
+    val aiTarget = activeAdvice?.suggestedTarget?.let {
+        com.frame.app.domain.model.NormalizedRect(it.left, it.top, it.right, it.bottom)
     }
 
     // Is the live subject lined up with the AI target? Drives the "nailed it"
@@ -199,7 +211,10 @@ fun CameraScreen(
     val aiTargetSpec = aiTarget?.let { rect ->
         TargetSpec(
             targetRect = rect,
-            subjectCenter = subject.boundingBox?.center,
+            // Arrow anchors at screen center in the overlay, so subjectCenter is
+            // unused for the AI target (null keeps it persistent when analysis
+            // is hidden and there's no detected subject).
+            subjectCenter = null,
             aligned = aiAligned,
         )
     }
@@ -299,14 +314,26 @@ fun CameraScreen(
                     showFlash = true
                     controller.capturePhoto { result ->
                         isCapturing = false
-                        feedback = when (result) {
-                            is CaptureResult.Success -> "Photo saved"
-                            is CaptureResult.Failure -> result.message
+                        when (result) {
+                            // Like the stock camera: success is signalled by the
+                            // thumbnail updating, not a text pill.
+                            is CaptureResult.Success -> onPhotoCaptured()
+                            is CaptureResult.Failure -> feedback = result.message
                         }
                     }
                 },
             )
         }
+
+        // Last-photo thumbnail beside the shutter; tap opens the gallery.
+        LastPhotoThumbnail(
+            photoUri = latestPhotoUri,
+            onClick = onOpenGallery,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .navigationBarsPadding()
+                .padding(start = 32.dp, bottom = 44.dp),
+        )
 
         // Top bar: two rows so nothing overlaps regardless of style-name width.
         //  Row 1 (centered): style pill.
@@ -344,9 +371,11 @@ fun CameraScreen(
                     onToggleAnalysis = { analysisEnabled = !analysisEnabled },
                 )
             }
-            StylePill(
-                styleName = stylePrefs.style.displayName,
-                onClick = onOpenStylePicker,
+            StyleDropdown(
+                styles = com.frame.app.domain.model.PhotoStyle.values().toList(),
+                currentStyle = stylePrefs.style,
+                onSelect = { styleViewModel.setStyle(it) },
+                onOpenFullPicker = onOpenStylePicker,
                 modifier = Modifier.padding(top = 12.dp),
             )
         }
@@ -375,14 +404,16 @@ fun CameraScreen(
             )
         }
 
-        // AI advice button (Guided mode), bottom-right above the shutter row.
-        // When an AI target is active, this becomes a "clear" control instead.
+        // Single AI chip (Guided mode), bottom-right beside the shutter.
+        //  - No advice yet: "AI advice" requests it.
+        //  - Advice active: a filled "AI tip" chip that reopens the advice sheet
+        //    (no new request). Clearing lives inside the sheet.
         if (overlayPrefs.mode == CameraMode.GUIDED) {
-            AiAdviceButton(
-                active = aiTarget != null,
+            AiChip(
+                active = activeAdvice != null,
                 onClick = {
-                    if (aiTarget != null) {
-                        aiTarget = null
+                    if (activeAdvice != null) {
+                        sceneAdviceViewModel.reopen()
                     } else {
                         sceneAdviceViewModel.requestAdvice(
                             SceneContext(
@@ -397,7 +428,7 @@ fun CameraScreen(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .navigationBarsPadding()
-                    .padding(end = 24.dp, bottom = 44.dp),
+                    .padding(end = 16.dp, bottom = 44.dp),
             )
         }
 
@@ -444,6 +475,7 @@ fun CameraScreen(
     SceneAdviceSheet(
         state = sceneAdviceState,
         onDismiss = { sceneAdviceViewModel.dismiss() },
+        onClear = { sceneAdviceViewModel.clearAdvice() },
     )
 }
 
@@ -473,29 +505,47 @@ private fun com.frame.app.domain.model.CompositionResult.toRuleSummary(): String
     }
 }
 
-/** Sparkle button that requests on-demand AI advice; becomes a "clear" control
- *  while an AI target is active on screen. */
+/**
+ * The one AI control. Idle: a dark "AI advice" pill. Active (advice available):
+ * a filled yellow "AI tip" pill, so the state is obvious without relying on
+ * color alone (the label changes too). At least 48dp tall, announced as a
+ * button with a spoken action.
+ */
 @Composable
-private fun AiAdviceButton(active: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun AiChip(
+    active: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val container = if (active) FrameYellow else Color.Black.copy(alpha = 0.55f)
+    val content = if (active) Color.Black else Color.White
+    val iconTint = if (active) Color.Black else FrameYellow
+
     Row(
         modifier = modifier
+            .heightIn(min = 48.dp)
             .clip(RoundedCornerShape(50))
-            .background(Color.Black.copy(alpha = 0.55f))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .background(container)
+            .clickable(
+                onClickLabel = if (active) "Open AI advice" else "Get AI advice",
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            imageVector = if (active) Icons.Filled.Close else Icons.Filled.AutoAwesome,
-            contentDescription = if (active) "Clear AI target" else "Get AI advice",
-            tint = com.frame.app.ui.theme.FrameYellow,
+            imageVector = Icons.Filled.AutoAwesome,
+            contentDescription = null, // the label text conveys the meaning
+            tint = iconTint,
             modifier = Modifier.size(18.dp),
         )
         Text(
-            text = if (active) "Clear AI" else "AI advice",
-            color = Color.White,
+            text = if (active) "AI tip" else "AI advice",
+            color = content,
             style = MaterialTheme.typography.labelLarge,
-            modifier = Modifier.padding(start = 6.dp),
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(start = 8.dp),
         )
     }
 }

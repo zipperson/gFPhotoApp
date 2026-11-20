@@ -126,6 +126,9 @@ dependencies {
     // Permissions
     implementation(libs.accompanist.permissions)
 
+    // Image loading (gallery thumbnails)
+    implementation(libs.coil.compose)
+
     // Networking + JSON (OpenAI scene analyzer)
     implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)

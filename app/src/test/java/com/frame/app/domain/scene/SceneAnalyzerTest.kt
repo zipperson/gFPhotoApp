@@ -33,6 +33,7 @@ class SceneAnalyzerTest {
             lighting = null,
             background = null,
             overall = "nice",
+            suggestedTarget = null,
             rawText = "raw",
         )
         val result = FakeSceneAnalyzer(canned).analyze(ByteArray(0), context)

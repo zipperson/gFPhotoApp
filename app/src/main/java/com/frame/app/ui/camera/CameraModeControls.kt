@@ -3,18 +3,27 @@ package com.frame.app.ui.camera
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -74,35 +83,77 @@ fun CameraModeControls(
 }
 
 /**
- * Standalone style pill (current style + reopen picker). Placed on its own line
- * (top-center) so it doesn't compete for width with the mode/flash clusters.
+ * Compact style control: a small pill showing the current style that opens a
+ * dropdown menu of all styles (stock-camera-app style), so it stays out of the
+ * way yet lets the user switch quickly. Also offers "More…" to open the full
+ * selection screen.
  */
 @Composable
-fun StylePill(
-    styleName: String,
-    onClick: () -> Unit,
+fun StyleDropdown(
+    styles: List<com.frame.app.domain.model.PhotoStyle>,
+    currentStyle: com.frame.app.domain.model.PhotoStyle,
+    onSelect: (com.frame.app.domain.model.PhotoStyle) -> Unit,
+    onOpenFullPicker: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(50))
-            .background(Color.Black.copy(alpha = 0.4f))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = Icons.Filled.AutoAwesome,
-            contentDescription = "Change style",
-            tint = FrameYellow,
-            modifier = Modifier.size(16.dp),
-        )
-        Text(
-            text = styleName,
-            color = Color.White,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(start = 6.dp),
-        )
+    var expanded by remember { mutableStateOf(false) }
+
+    Box(modifier = modifier) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .background(Color.Black.copy(alpha = 0.4f))
+                .clickable { expanded = true }
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.AutoAwesome,
+                contentDescription = "Change style",
+                tint = FrameYellow,
+                modifier = Modifier.size(16.dp),
+            )
+            Text(
+                text = currentStyle.displayName,
+                color = Color.White,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(start = 6.dp),
+            )
+            Icon(
+                imageVector = Icons.Filled.ArrowDropDown,
+                contentDescription = null,
+                tint = Color.White,
+            )
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            styles.forEach { style ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = style.displayName,
+                            fontWeight = if (style == currentStyle) FontWeight.Bold else FontWeight.Normal,
+                            color = if (style == currentStyle) FrameYellow else Color.Unspecified,
+                        )
+                    },
+                    onClick = {
+                        expanded = false
+                        onSelect(style)
+                    },
+                )
+            }
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text("More…") },
+                onClick = {
+                    expanded = false
+                    onOpenFullPicker()
+                },
+            )
+        }
     }
 }
