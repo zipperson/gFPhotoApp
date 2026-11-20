@@ -33,7 +33,9 @@ class DefaultOverlayRenderer : OverlayRenderer {
         } else null
 
         val subjectBox = if (settings.showSubjectBox) subject.boundingBox else null
-        val landmarks = if (settings.showSubjectBox) subject.landmarks else emptyList()
+        val landmarks = if (settings.showSubjectBox && settings.showLandmarks) {
+            subject.landmarks
+        } else emptyList()
 
         return OverlaySpec(
             showThirds = settings.showThirds,
@@ -41,8 +43,9 @@ class DefaultOverlayRenderer : OverlayRenderer {
             horizon = horizon,
             subjectBox = subjectBox,
             landmarks = landmarks,
-            // Target guidance rides with subject-box visibility.
-            target = if (settings.showSubjectBox) target else null,
+            // Target guidance rides with subject-box visibility. An active AI
+            // target supersedes it so two competing zones never show at once.
+            target = if (settings.showSubjectBox && aiTarget == null) target else null,
             aiTarget = aiTarget, // AI suggestion shows regardless of guide toggles
             referenceOutline = null, // Phase 5 reference feature
             opacity = settings.opacity.coerceIn(0f, 1f),

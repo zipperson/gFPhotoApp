@@ -11,6 +11,12 @@ val FrameYellow = Color(0xFFFFD400)
 val FrameWhite = Color(0xFFFFFFFF)
 val FrameBlack = Color(0xFF000000)
 
+// Semantic colours. Each means one thing across the whole UI:
+//   yellow (FrameYellow) = act on this      white = reference (grid, level)
+//   green  (FrameGreen)  = done / ready      cyan  (FrameAi)    = AI suggestion
+val FrameGreen = Color(0xFF4CAF50)
+val FrameAi = Color(0xFF29D6E6)
+
 /**
  * FRAME is a camera-first app, so the theme is intentionally dark and minimal —
  * the preview should dominate and chrome should recede. We use a single dark
@@ -33,7 +39,7 @@ fun FrameTheme(
 ) {
     MaterialTheme(
         colorScheme = FrameColorScheme,
-        typography = MaterialTheme.typography,
+        typography = FrameTypography,
         content = content,
     )
 }

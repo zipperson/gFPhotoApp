@@ -20,6 +20,12 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.ui.text.style.TextAlign
+import com.frame.app.ui.theme.Spacing
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -115,12 +121,43 @@ private fun GalleryGrid(
         }
 
         if (isLoaded && photos.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(Spacing.xl),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.PhotoLibrary,
+                    contentDescription = null,
+                    tint = FrameYellow,
+                    modifier = Modifier.size(Spacing.xxl),
+                )
                 Text(
-                    text = "No photos yet.\nTake one and it'll show up here.",
+                    text = "No photos yet",
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = Spacing.md),
+                )
+                Text(
+                    text = "Photos you take with FRAME show up here.",
                     color = Color.White.copy(alpha = 0.7f),
                     style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = Spacing.xs),
                 )
+                Button(
+                    onClick = onBack,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = FrameYellow,
+                        contentColor = Color.Black,
+                    ),
+                    modifier = Modifier.padding(top = Spacing.lg),
+                ) {
+                    Text("Open camera", style = MaterialTheme.typography.labelLarge)
+                }
             }
         } else {
             LazyVerticalGrid(

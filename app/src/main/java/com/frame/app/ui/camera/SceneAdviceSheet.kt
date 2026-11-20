@@ -179,7 +179,7 @@ private fun AdviceRow(icon: ImageVector, label: String, text: String) {
                 text = label.uppercase(),
                 style = MaterialTheme.typography.labelSmall,
                 color = FrameYellow,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.SemiBold,
             )
             Text(
                 text = text,

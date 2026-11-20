@@ -39,6 +39,8 @@ data class OverlaySettings(
     val showHorizon: Boolean = true,
     val showSubjectBox: Boolean = true,
     val showReferenceOutline: Boolean = true,
+    /** Joint dots over the detected body. Off by default: brackets are enough. */
+    val showLandmarks: Boolean = false,
     /** Guide opacity, 0f..1f. */
     val opacity: Float = 0.6f,
 ) {

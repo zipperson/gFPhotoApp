@@ -79,6 +79,60 @@ class DefaultOverlayRendererTest {
     }
 
     @Test
+    fun landmarks_hiddenByDefault_shownWhenEnabled() {
+        val box = NormalizedRect(0.3f, 0.1f, 0.7f, 0.9f)
+        val point = com.frame.app.domain.model.NormalizedLandmark(
+            type = com.frame.app.domain.model.LandmarkType.entries.first(),
+            position = com.frame.app.domain.model.NormalizedPoint(0.5f, 0.5f),
+            confidence = 1f,
+        )
+        val subject = SubjectFrame(boundingBox = box, landmarks = listOf(point), timestampMs = 0L)
+
+        val off = renderer.buildSpec(
+            subject = subject,
+            tilt = TiltState.UNAVAILABLE,
+            composition = CompositionResult.NONE,
+            settings = OverlaySettings.GUIDED,
+        )
+        assertTrue(off.landmarks.isEmpty())
+
+        val on = renderer.buildSpec(
+            subject = subject,
+            tilt = TiltState.UNAVAILABLE,
+            composition = CompositionResult.NONE,
+            settings = OverlaySettings.GUIDED.copy(showLandmarks = true),
+        )
+        assertEquals(1, on.landmarks.size)
+    }
+
+    @Test
+    fun aiTarget_supersedesRuleTarget() {
+        val rect = NormalizedRect(0.2f, 0.1f, 0.8f, 0.9f)
+        val spec = com.frame.app.domain.service.TargetSpec(
+            targetRect = rect, subjectCenter = null, aligned = false,
+        )
+        val withAi = renderer.buildSpec(
+            subject = SubjectFrame.empty(0L),
+            tilt = TiltState.UNAVAILABLE,
+            composition = CompositionResult.NONE,
+            settings = OverlaySettings.GUIDED,
+            target = spec,
+            aiTarget = spec,
+        )
+        assertNull(withAi.target)
+        assertEquals(spec, withAi.aiTarget)
+
+        val ruleOnly = renderer.buildSpec(
+            subject = SubjectFrame.empty(0L),
+            tilt = TiltState.UNAVAILABLE,
+            composition = CompositionResult.NONE,
+            settings = OverlaySettings.GUIDED,
+            target = spec,
+        )
+        assertEquals(spec, ruleOnly.target)
+    }
+
+    @Test
     fun opacity_isClampedToUnitInterval() {
         val spec = renderer.buildSpec(
             subject = SubjectFrame.empty(0L),

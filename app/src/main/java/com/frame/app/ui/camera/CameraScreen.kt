@@ -7,40 +7,32 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.Icon
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import com.frame.app.domain.model.SelfTimer
+import com.frame.app.ui.camera.gesture.afterSwipe
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -49,11 +41,10 @@ import com.frame.app.domain.composition.CompositionTarget
 import com.frame.app.domain.composition.DefaultCompositionEngine
 import com.frame.app.domain.composition.toBrief
 import com.frame.app.domain.composition.toThresholds
-import com.frame.app.domain.scene.SceneContext
-import com.frame.app.domain.service.TargetSpec
-import com.frame.app.domain.model.CameraMode
 import com.frame.app.domain.model.SubjectFrame
 import com.frame.app.domain.model.TiltState
+import com.frame.app.domain.scene.SceneContext
+import com.frame.app.domain.service.TargetSpec
 import com.frame.app.platform.camera.CameraLens
 import com.frame.app.platform.camera.CameraXController
 import com.frame.app.platform.camera.CaptureResult
@@ -61,22 +52,24 @@ import com.frame.app.platform.camera.next
 import com.frame.app.platform.overlay.DefaultOverlayRenderer
 import com.frame.app.platform.pose.MlKitPoseDetector
 import com.frame.app.platform.sensor.DeviceLevelSensor
-import com.frame.app.ui.theme.FrameYellow
+import com.frame.app.ui.camera.hud.CameraBottomBar
+import com.frame.app.ui.camera.hud.CameraTopBar
 import com.frame.app.ui.camera.overlay.CompositionOverlay
+import com.frame.app.ui.components.GlassPill
+import com.frame.app.ui.theme.Spacing
 import com.frame.app.viewmodel.OverlayViewModel
 import com.frame.app.viewmodel.OverlayViewModelFactory
-import com.frame.app.viewmodel.SceneAdviceUiState
 import com.frame.app.viewmodel.SceneAdviceViewModel
 import com.frame.app.viewmodel.SceneAdviceViewModelFactory
 import com.frame.app.viewmodel.StyleViewModel
 import com.frame.app.viewmodel.StyleViewModelFactory
 
 /**
- * The live camera screen with capture (Task 4).
+ * The live camera screen.
  *
- * Layout: a full-screen [PreviewView] (hosted via [AndroidView]) with the
- * shutter and transient feedback layered on top in the same [Box] — the slot
- * where overlays (Task 8) and the rest of the controls (Tasks 5-6) will sit.
+ * A full-screen [PreviewView] (hosted via [AndroidView]) with the guidance
+ * overlay and gesture layer on top, then the HUD: a slim top bar and a
+ * thumb-zone bottom stack (status, mode strip + AI, thumbnail/shutter/flip).
  */
 @Composable
 fun CameraScreen(
@@ -91,9 +84,8 @@ fun CameraScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    // Phase 3: ML Kit pose detection feeding the ImageAnalysis use case. Its
-    // analyzer runs per frame; detected subjects flow out via `results` and into
-    // the overlay. (NoOpPoseDetector/FrameAnalyzer remain for tests/fallback.)
+    // ML Kit pose detection feeding the ImageAnalysis use case. Its analyzer
+    // runs per frame; detected subjects flow out via `results` into the overlay.
     val poseDetector = remember { MlKitPoseDetector() }
     val controller = remember {
         CameraXController(
@@ -139,15 +131,16 @@ fun CameraScreen(
         factory = OverlayViewModelFactory(context.applicationContext),
     )
     val overlayPrefs by overlayViewModel.state.collectAsStateWithLifecycle()
-    var showSettingsSheet by remember { mutableStateOf(false) }
+    var showMoreSheet by remember { mutableStateOf(false) }
+    var focusTap by remember { mutableStateOf<FocusTap?>(null) }
 
-    // Selected photography style (for the style pill; drives the engine in Task 4).
+    // Selected photography style; drives the composition engine.
     val styleViewModel: StyleViewModel = viewModel(
         factory = StyleViewModelFactory(context.applicationContext),
     )
     val stylePrefs by styleViewModel.state.collectAsStateWithLifecycle()
 
-    // AI scene advice (Phase 5): on-demand OpenAI analysis of a captured frame.
+    // AI scene advice: on-demand OpenAI analysis of a captured frame.
     val sceneAdviceViewModel: SceneAdviceViewModel = viewModel(
         factory = SceneAdviceViewModelFactory(
             appContext = context.applicationContext,
@@ -189,11 +182,8 @@ fun CameraScreen(
         )
     } else null
 
-    // AI-suggested target persists on the preview (independent of the advice
-    // sheet) so the user can move the camera to line up with it. Cleared via the
-    // dismiss control or when a new request starts.
-    // Derived from the ViewModel's active advice, so it survives navigating to
-    // the gallery and back; cleared only via the Clear control.
+    // AI-suggested target, derived from the ViewModel's active advice so it
+    // survives navigating to the gallery and back; cleared only via the sheet.
     val aiTarget = activeAdvice?.suggestedTarget?.let {
         com.frame.app.domain.model.NormalizedRect(it.left, it.top, it.right, it.bottom)
     }
@@ -203,8 +193,6 @@ fun CameraScreen(
     val aiAligned = aiTarget?.let { t ->
         subject.hasSubject && CompositionTarget.isAligned(subject, t)
     } ?: false
-
-
 
     // Overlay pipeline: renderer builds a spec from current state + settings.
     val overlayRenderer = remember { DefaultOverlayRenderer() }
@@ -219,9 +207,9 @@ fun CameraScreen(
         )
     }
     val overlaySpec = overlayRenderer.buildSpec(
-        subject = subject,                       // live ML Kit detection (Phase 3)
+        subject = subject,
         tilt = tilt,
-        composition = composition,               // live composition result (Phase 4)
+        composition = composition,
         settings = overlayPrefs.settings,
         target = target,
         aiTarget = aiTargetSpec,
@@ -231,6 +219,75 @@ fun CameraScreen(
     var isCapturing by remember { mutableStateOf(false) }
     var showFlash by remember { mutableStateOf(false) }
     var feedback by remember { mutableStateOf<String?>(null) }
+
+    // Self-timer (session-only). `countdown` is the seconds left while running.
+    var timer by remember { mutableStateOf(SelfTimer.OFF) }
+    var countdown by remember { mutableStateOf<Int?>(null) }
+    var countdownJob by remember { mutableStateOf<Job?>(null) }
+    val scope = rememberCoroutineScope()
+    val haptic = LocalHapticFeedback.current
+
+    val performCapture: () -> Unit = {
+        isCapturing = true
+        showFlash = true
+        controller.capturePhoto { result ->
+            isCapturing = false
+            when (result) {
+                // Like the stock camera: success is signalled by the
+                // thumbnail updating, not a text pill.
+                is CaptureResult.Success -> onPhotoCaptured()
+                is CaptureResult.Failure -> feedback = result.message
+            }
+        }
+    }
+
+    // Shared by the shutter button and the volume keys: cancels a running
+    // countdown, starts one if a timer is set, otherwise captures immediately.
+    val onShutterPressed: () -> Unit = {
+        if (countdown != null) {
+            countdownJob?.cancel()
+            countdownJob = null
+            countdown = null
+        } else if (cameraState.isReady && !isCapturing) {
+            if (!timer.isOn) {
+                performCapture()
+            } else {
+                countdownJob = scope.launch {
+                    try {
+                        for (s in timer.seconds downTo 1) {
+                            countdown = s
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            delay(1000)
+                        }
+                    } finally {
+                        // Runs on cancel too; the capture below is skipped then
+                        // because cancellation propagates out of the try.
+                        countdown = null
+                    }
+                    performCapture()
+                }
+            }
+        }
+    }
+
+    // Volume keys act as the shutter while this screen is showing.
+    val shutterKeys = LocalShutterKeys.current
+    val currentOnShutterPressed by rememberUpdatedState(onShutterPressed)
+    DisposableEffect(shutterKeys) {
+        val unregister = shutterKeys.register { currentOnShutterPressed() }
+        onDispose { unregister() }
+    }
+
+    // "Shot ready": the subject sits in whichever target zone is on screen.
+    // Greens the shutter ring and ticks once on the way in.
+    val shotReady = overlaySpec.target?.aligned == true || overlaySpec.aiTarget?.aligned == true
+    var wasShotReady by remember { mutableStateOf(false) }
+    LaunchedEffect(shotReady) {
+        if (shotReady && !wasShotReady) {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        }
+        wasShotReady = shotReady
+    }
 
     // Auto-dismiss the feedback message after a short delay.
     LaunchedEffect(feedback) {
@@ -279,11 +336,29 @@ fun CameraScreen(
                 controller.setZoomRatio(cameraState.zoomRatio * scaleFactor)
             },
             onFocus = { nx, ny -> controller.focusAt(nx, ny) },
+            onTapAt = { pos -> focusTap = FocusTap(pos, System.nanoTime()) },
+            onSwipe = { direction ->
+                val newMode = overlayPrefs.mode.afterSwipe(direction)
+                if (newMode != overlayPrefs.mode) {
+                    overlayViewModel.setMode(newMode)
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                }
+            },
         )
 
-        // Composition overlay: thirds grid, crosshair, horizon (and, in later
-        // phases, subject box + reference outline) — all from the OverlaySpec.
+        // Guidance overlay: grid, level, subject brackets, targets, arrows.
         CompositionOverlay(spec = overlaySpec)
+
+        // Exposure slider that appears beside the focus ring after a tap.
+        if (cameraState.supportsExposure) {
+            ExposureOnFocus(
+                tap = focusTap,
+                index = cameraState.exposureIndex,
+                minIndex = cameraState.minExposureIndex,
+                maxIndex = cameraState.maxExposureIndex,
+                onIndexChange = { controller.setExposureIndex(it) },
+            )
+        }
 
         // Capture flash.
         val flashAlpha by animateFloatAsState(
@@ -299,156 +374,73 @@ fun CameraScreen(
             )
         }
 
-        // Shutter row, pinned to the bottom.
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(bottom = 32.dp)
-                .navigationBarsPadding(),
-            contentAlignment = Alignment.BottomCenter,
-        ) {
-            ShutterButton(
-                enabled = cameraState.isReady && !isCapturing,
-                onCapture = {
-                    isCapturing = true
-                    showFlash = true
-                    controller.capturePhoto { result ->
-                        isCapturing = false
-                        when (result) {
-                            // Like the stock camera: success is signalled by the
-                            // thumbnail updating, not a text pill.
-                            is CaptureResult.Success -> onPhotoCaptured()
-                            is CaptureResult.Failure -> feedback = result.message
-                        }
-                    }
-                },
-            )
-        }
+        // --- HUD ---------------------------------------------------------
 
-        // Last-photo thumbnail beside the shutter; tap opens the gallery.
-        LastPhotoThumbnail(
-            photoUri = latestPhotoUri,
-            onClick = onOpenGallery,
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .navigationBarsPadding()
-                .padding(start = 32.dp, bottom = 44.dp),
+        // Top: flash | style | more.
+        CameraTopBar(
+            flashMode = cameraState.flashMode,
+            hasFlashUnit = cameraState.hasFlashUnit,
+            currentStyle = stylePrefs.style,
+            onCycleFlash = { controller.setFlashMode(cameraState.flashMode.next()) },
+            onSelectStyle = { styleViewModel.setStyle(it) },
+            onOpenStylePicker = onOpenStylePicker,
+            onOpenMore = { showMoreSheet = true },
+            modifier = Modifier.align(Alignment.TopCenter),
         )
 
-        // Top bar: two rows so nothing overlaps regardless of style-name width.
-        //  Row 1 (centered): style pill.
-        //  Row 2: mode/tune on the left, flash/torch/switch on the right.
-        Column(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(horizontal = 12.dp, vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top,
-            ) {
-                CameraModeControls(
-                    mode = overlayPrefs.mode,
-                    onToggleMode = { overlayViewModel.toggleMode() },
-                    onOpenSettings = { showSettingsSheet = true },
-                )
-                CameraTopControls(
-                    flashMode = cameraState.flashMode,
-                    torchEnabled = cameraState.torchEnabled,
-                    hasFlashUnit = cameraState.hasFlashUnit,
-                    lens = cameraState.lens,
-                    analysisEnabled = analysisEnabled,
-                    onCycleFlash = { controller.setFlashMode(cameraState.flashMode.next()) },
-                    onToggleTorch = { controller.setTorch(!cameraState.torchEnabled) },
-                    onSwitchLens = {
-                        val target = if (cameraState.lens == CameraLens.BACK) CameraLens.FRONT else CameraLens.BACK
-                        controller.setLens(target)
-                    },
-                    onToggleAnalysis = { analysisEnabled = !analysisEnabled },
-                )
-            }
-            StyleDropdown(
-                styles = com.frame.app.domain.model.PhotoStyle.values().toList(),
-                currentStyle = stylePrefs.style,
-                onSelect = { styleViewModel.setStyle(it) },
-                onOpenFullPicker = onOpenStylePicker,
-                modifier = Modifier.padding(top = 12.dp),
-            )
-        }
-
-        // Zoom readout, shown only when zoomed past the minimum. Sits clear of
-        // the two-row top bar.
+        // Zoom readout, shown only when zoomed past the minimum. Sits just
+        // below the top bar.
         if (cameraState.zoomRatio > cameraState.minZoomRatio + 0.05f) {
             ZoomIndicator(
                 zoomRatio = cameraState.zoomRatio,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .statusBarsPadding()
-                    .padding(top = 120.dp),
+                    .padding(top = Spacing.xxl + Spacing.lg),
             )
         }
 
-        // Live composition feedback (Guided mode only; advisory). Sits above the
-        // exposure slider / shutter so it reads without crowding the controls.
-        if (overlayPrefs.mode == CameraMode.GUIDED) {
-            CompositionFeedback(
-                result = composition,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 180.dp),
-            )
-        }
-
-        // Single AI chip (Guided mode), bottom-right beside the shutter.
-        //  - No advice yet: "AI advice" requests it.
-        //  - Advice active: a filled "AI tip" chip that reopens the advice sheet
-        //    (no new request). Clearing lives inside the sheet.
-        if (overlayPrefs.mode == CameraMode.GUIDED) {
-            AiChip(
-                active = activeAdvice != null,
-                onClick = {
-                    if (activeAdvice != null) {
-                        sceneAdviceViewModel.reopen()
-                    } else {
-                        sceneAdviceViewModel.requestAdvice(
-                            SceneContext(
-                                styleName = stylePrefs.style.displayName,
-                                styleTagline = stylePrefs.style.tagline,
-                                ruleSummary = composition.toRuleSummary(),
-                                styleBrief = stylePrefs.style.toBrief(),
-                            )
+        // Bottom thumb-zone stack: status, mode strip + AI, thumbnail/shutter/flip.
+        CameraBottomBar(
+            composition = composition,
+            mode = overlayPrefs.mode,
+            onModeChange = { overlayViewModel.setMode(it) },
+            analysisEnabled = analysisEnabled,
+            onResumeAnalysis = { analysisEnabled = true },
+            adviceActive = activeAdvice != null,
+            onAiClick = {
+                if (activeAdvice != null) {
+                    sceneAdviceViewModel.reopen()
+                } else {
+                    sceneAdviceViewModel.requestAdvice(
+                        SceneContext(
+                            styleName = stylePrefs.style.displayName,
+                            styleTagline = stylePrefs.style.tagline,
+                            ruleSummary = composition.toRuleSummary(),
+                            styleBrief = stylePrefs.style.toBrief(),
                         )
-                    }
-                },
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .navigationBarsPadding()
-                    .padding(end = 16.dp, bottom = 44.dp),
-            )
-        }
+                    )
+                }
+            },
+            latestPhotoUri = latestPhotoUri,
+            onOpenGallery = onOpenGallery,
+            shutterEnabled = cameraState.isReady && !isCapturing,
+            onCapture = onShutterPressed,
+            onFlipCamera = {
+                val next = if (cameraState.lens == CameraLens.BACK) CameraLens.FRONT else CameraLens.BACK
+                controller.setLens(next)
+            },
+            timer = timer,
+            onCycleTimer = { timer = timer.next() },
+            countingDown = countdown != null,
+            shotReady = shotReady,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
 
-        // Exposure slider, sitting just above the shutter when supported.
-        if (cameraState.supportsExposure) {
-            ExposureSlider(
-                index = cameraState.exposureIndex,
-                minIndex = cameraState.minExposureIndex,
-                maxIndex = cameraState.maxExposureIndex,
-                onIndexChange = { controller.setExposureIndex(it) },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 128.dp),
-            )
-        }
+        // Big centered countdown numeral while the self-timer runs.
+        countdown?.let { CountdownOverlay(secondsLeft = it) }
 
-        // Transient confirmation / error.
-        // Transient confirmation ("Photo saved", "Matched the AI shot") — centered
-        // on screen so it never collides with the busy top HUD.
+        // Transient confirmation / error, centered so it never collides with the HUD.
         AnimatedVisibility(
             visible = feedback != null,
             enter = fadeIn(),
@@ -463,11 +455,16 @@ fun CameraScreen(
         }
     }
 
-    if (showSettingsSheet) {
-        OverlaySettingsSheet(
+    if (showMoreSheet) {
+        CameraMoreSheet(
             settings = overlayPrefs.settings,
             onSettingsChange = { transform -> overlayViewModel.updateSettings(transform) },
-            onDismiss = { showSettingsSheet = false },
+            analysisEnabled = analysisEnabled,
+            onAnalysisChange = { analysisEnabled = it },
+            hasFlashUnit = cameraState.hasFlashUnit,
+            torchEnabled = cameraState.torchEnabled,
+            onTorchChange = { controller.setTorch(it) },
+            onDismiss = { showMoreSheet = false },
         )
     }
 
@@ -505,67 +502,13 @@ private fun com.frame.app.domain.model.CompositionResult.toRuleSummary(): String
     }
 }
 
-/**
- * The one AI control. Idle: a dark "AI advice" pill. Active (advice available):
- * a filled yellow "AI tip" pill, so the state is obvious without relying on
- * color alone (the label changes too). At least 48dp tall, announced as a
- * button with a spoken action.
- */
-@Composable
-private fun AiChip(
-    active: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val container = if (active) FrameYellow else Color.Black.copy(alpha = 0.55f)
-    val content = if (active) Color.Black else Color.White
-    val iconTint = if (active) Color.Black else FrameYellow
-
-    Row(
-        modifier = modifier
-            .heightIn(min = 48.dp)
-            .clip(RoundedCornerShape(50))
-            .background(container)
-            .clickable(
-                onClickLabel = if (active) "Open AI advice" else "Get AI advice",
-                role = Role.Button,
-                onClick = onClick,
-            )
-            .padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = Icons.Filled.AutoAwesome,
-            contentDescription = null, // the label text conveys the meaning
-            tint = iconTint,
-            modifier = Modifier.size(18.dp),
-        )
-        Text(
-            text = if (active) "AI tip" else "AI advice",
-            color = content,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(start = 8.dp),
-        )
-    }
-}
-
+/** Short centered message over the preview (errors, one-shot confirmations). */
 @Composable
 private fun CaptureFeedbackPill(text: String, modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .background(
-                color = Color.Black.copy(alpha = 0.6f),
-                shape = MaterialTheme.shapes.large,
-            )
-            .fillMaxWidth(0.7f)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        contentAlignment = Alignment.Center,
-    ) {
+    GlassPill(modifier = modifier) {
         Text(
             text = text,
-            color = Color.White,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.labelLarge,
         )
     }
 }

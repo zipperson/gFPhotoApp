@@ -22,7 +22,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.frame.app.R
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import com.frame.app.ui.theme.FrameYellow
+import com.frame.app.ui.theme.Spacing
 
 /**
  * Explains why FRAME needs the camera and offers the appropriate action.
@@ -43,7 +47,7 @@ fun CameraPermissionRationale(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(32.dp),
+            .padding(Spacing.xl),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -51,14 +55,15 @@ fun CameraPermissionRationale(
             imageVector = Icons.Outlined.CameraAlt,
             contentDescription = null,
             tint = FrameYellow,
-            modifier = Modifier.size(56.dp),
+            modifier = Modifier.size(Spacing.xxl),
         )
         Text(
             text = stringResource(R.string.permission_camera_rationale_title),
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onBackground,
             textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = 20.dp),
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(top = Spacing.md),
         )
         Text(
             text = stringResource(
@@ -68,7 +73,7 @@ fun CameraPermissionRationale(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onBackground,
             textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = 12.dp),
+            modifier = Modifier.padding(top = Spacing.xs),
         )
         Button(
             onClick = {
@@ -83,9 +88,14 @@ fun CameraPermissionRationale(
                     onRequest()
                 }
             },
-            modifier = Modifier.padding(top = 24.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = FrameYellow,
+                contentColor = Color.Black,
+            ),
+            modifier = Modifier.padding(top = Spacing.lg),
         ) {
             Text(
+                style = MaterialTheme.typography.labelLarge,
                 text = stringResource(
                     if (isPermanentlyDenied) R.string.permission_open_settings
                     else R.string.permission_grant

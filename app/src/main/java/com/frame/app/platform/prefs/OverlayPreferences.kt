@@ -45,6 +45,7 @@ class OverlayPreferences(private val context: Context) : OverlayPreferencesStore
             showHorizon = prefs[KEY_HORIZON] ?: preset.showHorizon,
             showSubjectBox = prefs[KEY_SUBJECT_BOX] ?: preset.showSubjectBox,
             showReferenceOutline = prefs[KEY_REFERENCE] ?: preset.showReferenceOutline,
+            showLandmarks = prefs[KEY_LANDMARKS] ?: preset.showLandmarks,
             opacity = prefs[KEY_OPACITY] ?: preset.opacity,
         )
         OverlayPrefsState(mode = mode, settings = settings)
@@ -60,6 +61,7 @@ class OverlayPreferences(private val context: Context) : OverlayPreferencesStore
             p[KEY_HORIZON] = preset.showHorizon
             p[KEY_SUBJECT_BOX] = preset.showSubjectBox
             p[KEY_REFERENCE] = preset.showReferenceOutline
+            p[KEY_LANDMARKS] = preset.showLandmarks
             p[KEY_OPACITY] = preset.opacity
         }
     }
@@ -72,6 +74,7 @@ class OverlayPreferences(private val context: Context) : OverlayPreferencesStore
             p[KEY_HORIZON] = settings.showHorizon
             p[KEY_SUBJECT_BOX] = settings.showSubjectBox
             p[KEY_REFERENCE] = settings.showReferenceOutline
+            p[KEY_LANDMARKS] = settings.showLandmarks
             p[KEY_OPACITY] = settings.opacity.coerceIn(0f, 1f)
         }
     }
@@ -83,6 +86,7 @@ class OverlayPreferences(private val context: Context) : OverlayPreferencesStore
         val KEY_HORIZON = booleanPreferencesKey("show_horizon")
         val KEY_SUBJECT_BOX = booleanPreferencesKey("show_subject_box")
         val KEY_REFERENCE = booleanPreferencesKey("show_reference")
+        val KEY_LANDMARKS = booleanPreferencesKey("show_landmarks")
         val KEY_OPACITY = floatPreferencesKey("opacity")
     }
 }
