@@ -10,7 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Reads FRAME's photos back from MediaStore (the Pictures/FRAME album that
+ * Reads Siyot's photos back from MediaStore (the Pictures/Siyot album that
  * [MediaStorePhotoStore] writes to), newest first.
  *
  * Filtering differs by API level:
@@ -29,11 +29,15 @@ class MediaStorePhotoRepository(
             MediaStore.Images.Media.DATE_ADDED,
         )
 
+        // Albums: the current "Siyot" folder, plus "FRAME", the app's earlier
+        // name, so photos taken before the rename still show up.
         val (selection, args) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            "${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?" to arrayOf("%Pictures/FRAME%")
+            val col = MediaStore.Images.Media.RELATIVE_PATH
+            "$col LIKE ? OR $col LIKE ?" to arrayOf("%Pictures/Siyot%", "%Pictures/FRAME%")
         } else {
             @Suppress("DEPRECATION")
-            "${MediaStore.Images.Media.DATA} LIKE ?" to arrayOf("%/Pictures/FRAME/%")
+            val col = MediaStore.Images.Media.DATA
+            "$col LIKE ? OR $col LIKE ?" to arrayOf("%/Pictures/Siyot/%", "%/Pictures/FRAME/%")
         }
 
         val results = mutableListOf<PhotoItem>()

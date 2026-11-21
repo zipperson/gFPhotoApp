@@ -10,12 +10,12 @@ import java.util.Locale
  */
 object PhotoNaming {
 
-    private const val PREFIX = "FRAME"
+    private const val PREFIX = "SIYOT"
     private const val EXTENSION = "jpg"
 
     /**
      * Produce a sortable, collision-resistant JPEG filename, e.g.
-     * `FRAME_20261111_153002_123.jpg`.
+     * `SIYOT_20261111_153002_123.jpg`.
      *
      * @param timestampMillis capture time (defaults to now)
      */

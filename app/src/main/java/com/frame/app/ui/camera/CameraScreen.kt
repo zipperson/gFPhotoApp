@@ -385,6 +385,9 @@ fun CameraScreen(
             },
         )
 
+        // Vignette + grain of the chosen look (the colour part is on the preview itself).
+        FilterOverlay(filter = filter)
+
         // Gesture layer: pinch-to-zoom + tap-to-focus (with focus ring).
         CameraGestureOverlay(
             focusResult = cameraState.lastFocusResult,

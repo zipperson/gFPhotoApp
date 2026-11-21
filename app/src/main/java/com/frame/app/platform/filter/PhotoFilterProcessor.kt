@@ -3,10 +3,18 @@ package com.frame.app.platform.filter
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.BitmapShader
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
+import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
+import android.graphics.RadialGradient
+import android.graphics.Shader
+import kotlin.math.hypot
 import android.media.ExifInterface
 import android.net.Uri
 import android.view.View
@@ -32,7 +40,8 @@ fun View.applyPhotoFilter(filter: PhotoFilter) {
 }
 
 /**
- * Bakes a [PhotoFilter] into an already-saved JPEG, in place.
+ * Bakes a [PhotoFilter] (colour matrix, then vignette, then grain) into an
+ * already-saved JPEG, in place.
  *
  * CameraX writes pixels unrotated plus an EXIF orientation tag, so we filter the
  * raw pixels and copy the tag back; the photo keeps its orientation. The result
@@ -78,7 +87,10 @@ class PhotoFilterProcessor(private val context: Context) {
             // 3. Filter in place, then encode to memory.
             val encoded = try {
                 val paint = Paint().apply { colorFilter = ColorMatrixColorFilter(colorMatrix) }
-                Canvas(bitmap).drawBitmap(bitmap, 0f, 0f, paint)
+                val canvas = Canvas(bitmap)
+                canvas.drawBitmap(bitmap, 0f, 0f, paint)
+                drawVignette(canvas, bitmap.width, bitmap.height, filter.vignette)
+                drawGrain(canvas, bitmap.width, bitmap.height, filter.grain)
                 ByteArrayOutputStream().also {
                     bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, it)
                 }.toByteArray()
@@ -98,7 +110,53 @@ class PhotoFilterProcessor(private val context: Context) {
         }.getOrDefault(false)
     }
 
+    /** Darkens the corners: clear inside [VIGNETTE_CLEAR_RADIUS], [strength] black at the edge. */
+    private fun drawVignette(canvas: Canvas, width: Int, height: Int, strength: Float) {
+        if (strength <= 0f) return
+        val edge = Color.argb((strength.coerceIn(0f, 1f) * 255).toInt(), 0, 0, 0)
+        val paint = Paint().apply {
+            shader = RadialGradient(
+                width / 2f,
+                height / 2f,
+                hypot(width / 2f, height / 2f),
+                intArrayOf(Color.TRANSPARENT, Color.TRANSPARENT, edge),
+                floatArrayOf(0f, VIGNETTE_CLEAR_RADIUS, 1f),
+                Shader.TileMode.CLAMP,
+            )
+        }
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+    }
+
+    /** Tiles the noise over the photo with an Overlay blend. */
+    private fun drawGrain(canvas: Canvas, width: Int, height: Int, strength: Float) {
+        if (strength <= 0f) return
+        val tile = Bitmap.createBitmap(
+            NoiseTile.pixels(), NoiseTile.SIZE, NoiseTile.SIZE, Bitmap.Config.ARGB_8888,
+        )
+        try {
+            // Scale the grain with the photo so it looks the same at 12 and 50 MP.
+            val scale = (maxOf(width, height) / GRAIN_REFERENCE_EDGE).coerceAtLeast(1f)
+            val shader = BitmapShader(tile, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT).apply {
+                setLocalMatrix(Matrix().apply { setScale(scale, scale) })
+            }
+            val paint = Paint().apply {
+                this.shader = shader
+                alpha = (strength.coerceIn(0f, 1f) * 255).toInt()
+                xfermode = PorterDuffXfermode(PorterDuff.Mode.OVERLAY)
+            }
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+        } finally {
+            tile.recycle()
+        }
+    }
+
     companion object {
+        /** Fraction of the corner distance that stays clear before the vignette starts. */
+        private const val VIGNETTE_CLEAR_RADIUS = 0.55f
+
+        /** Photo edge (px) at which grain is drawn at its native 1:1 size. */
+        private const val GRAIN_REFERENCE_EDGE = 1000f
+
         /** Cap on decoded pixels (~64 MB of ARGB_8888). */
         const val MAX_PIXELS = 16_000_000L
         private const val JPEG_QUALITY = 95

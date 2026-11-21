@@ -20,5 +20,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "FRAME"
+rootProject.name = "Siyot"
 include(":app")

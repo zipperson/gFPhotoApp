@@ -53,7 +53,7 @@ class OpenAiResponseParser(
     }
 
     /** Parse the "target" object into a validated, in-bounds SuggestedTarget. */
-    private fun parseTarget(element: kotlinx.serialization.json.JsonElement?): SuggestedTarget? {
+    private fun parseTarget(element: kotlinx.serialization.json.JsonElement?):  SuggestedTarget? {
         val obj = runCatching { element?.jsonObject }.getOrNull() ?: return null
         fun f(key: String): Float? =
             obj[key]?.jsonPrimitive?.content?.toFloatOrNull()?.coerceIn(0f, 1f)

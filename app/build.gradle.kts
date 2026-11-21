@@ -10,15 +10,29 @@ plugins {
 // in version control. Absent key -> empty string; the app detects this and
 // treats AI scene analysis as unavailable. Parsed by hand to avoid java.util
 // resolution quirks in the Gradle Kotlin DSL classpath.
-val openAiApiKey: String = run {
-    val f = rootProject.file("local.properties")
-    if (!f.exists()) return@run ""
-    f.readLines()
-        .firstOrNull { it.trimStart().startsWith("OPENAI_API_KEY") && it.contains("=") }
+// Reads `name=value` from a simple properties file, or null. Hand-parsed for
+// the same reason as above.
+fun readProp(file: java.io.File, name: String): String? {
+    if (!file.exists()) return null
+    return file.readLines()
+        .firstOrNull { it.trimStart().startsWith("$name=") || it.trimStart().startsWith("$name =") }
         ?.substringAfter("=")
         ?.trim()
-        ?: ""
 }
+
+val localProps = rootProject.file("local.properties")
+val openAiApiKey: String = readProp(localProps, "OPENAI_API_KEY") ?: ""
+
+// RELEASE builds do NOT embed the OpenAI key unless you opt in with
+// `OPENAI_EMBED_IN_RELEASE=true` in local.properties. Anything compiled into an
+// APK can be extracted, so only do this for private test builds. A public
+// release should call a server that holds the key instead.
+val embedKeyInRelease: Boolean = readProp(localProps, "OPENAI_EMBED_IN_RELEASE") == "true"
+
+// Release signing comes from a gitignored keystore.properties at the repo root
+// (storeFile, storePassword, keyAlias, keyPassword). Absent file -> the release
+// build is simply unsigned, so nothing here can leak a secret into git.
+val keystoreProps = rootProject.file("keystore.properties")
 
 android {
     namespace = "com.frame.app"
@@ -36,17 +50,37 @@ android {
             useSupportLibrary = true
         }
 
-        // Exposed to code as BuildConfig.OPENAI_API_KEY. Quoted string literal.
-        buildConfigField("String", "OPENAI_API_KEY", "\"$openAiApiKey\"")
+    }
+
+    signingConfigs {
+        if (keystoreProps.exists()) {
+            create("release") {
+                storeFile = rootProject.file(readProp(keystoreProps, "storeFile") ?: "")
+                storePassword = readProp(keystoreProps, "storePassword")
+                keyAlias = readProp(keystoreProps, "keyAlias")
+                keyPassword = readProp(keystoreProps, "keyPassword")
+            }
+        }
     }
 
     buildTypes {
+        debug {
+            // BuildConfig.OPENAI_API_KEY, a quoted string literal.
+            buildConfigField("String", "OPENAI_API_KEY", "\"$openAiApiKey\"")
+        }
         release {
-            isMinifyEnabled = false
+            val releaseKey = if (embedKeyInRelease) openAiApiKey else ""
+            buildConfigField("String", "OPENAI_API_KEY", "\"$releaseKey\"")
+
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (keystoreProps.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 

@@ -1,10 +1,10 @@
 <resources>
-    <string name="app_name">FRAME</string>
+    <string name="app_name">Siyot</string>
 
     <!-- Permissions -->
     <string name="permission_camera_rationale_title">Camera access needed</string>
-    <string name="permission_camera_rationale_body">FRAME needs the camera to show the live preview and help you compose your shot. Nothing is uploaded; all processing happens on your device.</string>
+    <string name="permission_camera_rationale_body">Siyot needs the camera to show the live preview and help you compose your shot. Guidance runs on your device. A frame is only sent online if you ask the AI coach for advice.</string>
     <string name="permission_grant">Grant access</string>
     <string name="permission_open_settings">Open settings</string>
-    <string name="permission_denied_body">Camera access is turned off. Enable it in system settings to use FRAME.</string>
+    <string name="permission_denied_body">Camera access is turned off. Enable it in system settings to use Siyot.</string>
 </resources>

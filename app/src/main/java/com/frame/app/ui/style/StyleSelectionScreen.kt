@@ -76,7 +76,7 @@ fun StyleSelectionScreen(
             color = Color.White,
         )
         Text(
-            text = "FRAME tunes its guidance to the style you're going for. You can change this anytime.",
+            text = "Siyot tunes its guidance to the style you're going for. You can change this anytime.",
             style = MaterialTheme.typography.bodyMedium,
             color = Color.White.copy(alpha = 0.7f),
             modifier = Modifier.padding(top = Spacing.xs),

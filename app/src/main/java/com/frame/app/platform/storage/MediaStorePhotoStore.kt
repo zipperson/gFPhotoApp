@@ -9,7 +9,7 @@ import java.io.File
 
 /**
  * Saves photos to the device gallery via [MediaStore], under
- * `Pictures/FRAME`, so they appear in the user's gallery app.
+ * `Pictures/Siyot`, so they appear in the user's gallery app.
  *
  * Handles the storage model split:
  *  - API 29+ : scoped storage. We set RELATIVE_PATH + IS_PENDING, write bytes,
@@ -67,6 +67,6 @@ class MediaStorePhotoStore(
 
     private companion object {
         const val MIME_JPEG = "image/jpeg"
-        const val ALBUM = "FRAME"
+        const val ALBUM = "Siyot"
     }
 }

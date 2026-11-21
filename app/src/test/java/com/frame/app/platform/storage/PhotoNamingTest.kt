@@ -12,9 +12,9 @@ import java.util.TimeZone
 class PhotoNamingTest {
 
     @Test
-    fun fileName_hasFramePrefixAndJpgExtension() {
+    fun fileName_hasSiyotPrefixAndJpgExtension() {
         val name = PhotoNaming.jpegFileName()
-        assertTrue("expected FRAME_ prefix, was: $name", name.startsWith("FRAME_"))
+        assertTrue("expected SIYOT_ prefix, was: $name", name.startsWith("SIYOT_"))
         assertTrue("expected .jpg extension, was: $name", name.endsWith(".jpg"))
     }
 
@@ -27,8 +27,8 @@ class PhotoNamingTest {
             set(Calendar.MILLISECOND, 123)
         }
         val name = PhotoNaming.jpegFileName(cal.timeInMillis)
-        // Format: FRAME_yyyyMMdd_HHmmss_SSS.jpg -> FRAME_20261111_153002_123.jpg
-        assertTrue("was: $name", name.matches(Regex("""FRAME_\d{8}_\d{6}_\d{3}\.jpg""")))
+        // Format: SIYOT_yyyyMMdd_HHmmss_SSS.jpg -> SIYOT_20261111_153002_123.jpg
+        assertTrue("was: $name", name.matches(Regex("""SIYOT_\d{8}_\d{6}_\d{3}\.jpg""")))
         assertTrue("was: $name", name.contains("20261111_153002_123"))
     }
 

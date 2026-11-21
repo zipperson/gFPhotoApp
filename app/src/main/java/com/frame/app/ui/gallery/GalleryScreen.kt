@@ -142,7 +142,7 @@ private fun GalleryGrid(
                     modifier = Modifier.padding(top = Spacing.md),
                 )
                 Text(
-                    text = "Photos you take with FRAME show up here.",
+                    text = "Photos you take with Siyot show up here.",
                     color = Color.White.copy(alpha = 0.7f),
                     style = MaterialTheme.typography.bodyMedium,
                     textAlign = TextAlign.Center,
