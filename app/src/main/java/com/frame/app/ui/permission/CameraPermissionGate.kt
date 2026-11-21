@@ -1,6 +1,7 @@
 package com.frame.app.ui.permission
 
 import android.Manifest
+import android.os.Build
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -39,6 +40,20 @@ fun CameraPermissionGate(
             granted = cameraPermission.status.isGranted,
             shouldShowRationale = cameraPermission.status.shouldShowRationale,
         )
+    }
+
+    // API 26-28 only: saving to and reading the gallery needs a runtime storage
+    // grant (scoped storage on 29+ doesn't). Ask once the camera is allowed, so
+    // the user isn't hit with two dialogs at once. Granting WRITE also covers
+    // READ (same permission group on these versions).
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+        val storagePermission = rememberPermissionState(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        val cameraGranted = cameraPermission.status.isGranted
+        LaunchedEffect(cameraGranted) {
+            if (cameraGranted && !storagePermission.status.isGranted) {
+                storagePermission.launchPermissionRequest()
+            }
+        }
     }
 
     // On first composition, if we've never asked, fire the request.

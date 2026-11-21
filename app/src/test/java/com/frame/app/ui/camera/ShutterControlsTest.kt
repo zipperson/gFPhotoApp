@@ -58,10 +58,14 @@ class ShutterControlsTest {
     }
 
     @Test
-    fun swipeMapping_isDirectionalAndIdempotent() {
-        assertEquals(CameraMode.MINIMAL, CameraMode.GUIDED.afterSwipe(SwipeDirection.LEFT))
+    fun swipeMapping_stepsThroughGuidedGroupMinimal_andStopsAtTheEnds() {
+        // Swipe left = move to the right-hand neighbour in the strip.
+        assertEquals(CameraMode.GROUP, CameraMode.GUIDED.afterSwipe(SwipeDirection.LEFT))
+        assertEquals(CameraMode.MINIMAL, CameraMode.GROUP.afterSwipe(SwipeDirection.LEFT))
         assertEquals(CameraMode.MINIMAL, CameraMode.MINIMAL.afterSwipe(SwipeDirection.LEFT))
-        assertEquals(CameraMode.GUIDED, CameraMode.MINIMAL.afterSwipe(SwipeDirection.RIGHT))
+        // Swipe right = move to the left-hand neighbour.
+        assertEquals(CameraMode.GROUP, CameraMode.MINIMAL.afterSwipe(SwipeDirection.RIGHT))
+        assertEquals(CameraMode.GUIDED, CameraMode.GROUP.afterSwipe(SwipeDirection.RIGHT))
         assertEquals(CameraMode.GUIDED, CameraMode.GUIDED.afterSwipe(SwipeDirection.RIGHT))
     }
 

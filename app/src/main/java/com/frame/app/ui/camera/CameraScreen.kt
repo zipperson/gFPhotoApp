@@ -56,7 +56,17 @@ import com.frame.app.ui.camera.hud.CameraBottomBar
 import com.frame.app.ui.camera.hud.CameraTopBar
 import com.frame.app.ui.camera.overlay.CompositionOverlay
 import com.frame.app.ui.components.GlassPill
+import com.frame.app.ui.theme.Sizes
 import com.frame.app.ui.theme.Spacing
+import com.frame.app.domain.composition.GroupCompositionEngine
+import com.frame.app.domain.model.CompositionRating
+import com.frame.app.domain.service.CompositionEngine
+import com.frame.app.platform.camera.ModeSwitchingAnalyzer
+import com.frame.app.platform.face.MlKitFaceGroupDetector
+import com.frame.app.domain.model.CameraMode
+import com.frame.app.platform.filter.applyPhotoFilter
+import com.frame.app.ui.camera.hud.FilterStrip
+import com.frame.app.viewmodel.FilterViewModel
 import com.frame.app.viewmodel.OverlayViewModel
 import com.frame.app.viewmodel.OverlayViewModelFactory
 import com.frame.app.viewmodel.SceneAdviceViewModel
@@ -87,10 +97,29 @@ fun CameraScreen(
     // ML Kit pose detection feeding the ImageAnalysis use case. Its analyzer
     // runs per frame; detected subjects flow out via `results` into the overlay.
     val poseDetector = remember { MlKitPoseDetector() }
+    // Group mode swaps in a face detector. Only one of the two sees each frame.
+    val faceDetector = remember { MlKitFaceGroupDetector() }
+    val frameAnalyzer = remember {
+        ModeSwitchingAnalyzer(single = poseDetector.analyzer, group = faceDetector.analyzer)
+    }
+
+    // Overlay mode + settings (persisted via DataStore in OverlayViewModel).
+    val overlayViewModel: OverlayViewModel = viewModel(
+        factory = OverlayViewModelFactory(context.applicationContext),
+    )
+    val overlayPrefs by overlayViewModel.state.collectAsStateWithLifecycle()
+
+    // Group is a camera mode (GUIDED / GROUP / MINIMAL), not a separate toggle.
+    val groupMode = overlayPrefs.mode == CameraMode.GROUP
+    LaunchedEffect(groupMode) {
+        faceDetector.reset()
+        frameAnalyzer.groupMode = groupMode
+    }
+
     val controller = remember {
         CameraXController(
             appContext = context.applicationContext,
-            frameAnalyzer = poseDetector.analyzer,
+            frameAnalyzer = frameAnalyzer,
         )
     }
     val cameraState by controller.state.collectAsStateWithLifecycle()
@@ -102,37 +131,55 @@ fun CameraScreen(
     // no composition) to cut heat/battery; preview + capture keep working.
     var analysisEnabled by remember { mutableStateOf(true) }
 
+    val groupSubject by faceDetector.results.collectAsStateWithLifecycle(
+        initialValue = SubjectFrame.empty(0L),
+    )
+
     // When analysis is off, present no subject so overlays/feedback clear.
-    val subject = if (analysisEnabled) rawSubject else SubjectFrame.empty(0L)
+    val subject = when {
+        !analysisEnabled -> SubjectFrame.empty(0L)
+        groupMode -> groupSubject
+        else -> rawSubject
+    }
+    val groupCount = subject.group?.count ?: 0
 
     DisposableEffect(analysisEnabled) {
-        if (analysisEnabled) poseDetector.start() else poseDetector.stop()
+        if (analysisEnabled) {
+            poseDetector.start()
+            faceDetector.start()
+        } else {
+            poseDetector.stop()
+            faceDetector.stop()
+        }
         onDispose { /* lifecycle stop handled below */ }
     }
 
     DisposableEffect(Unit) {
         onDispose {
             poseDetector.close()
+            faceDetector.close()
             controller.shutdown()
         }
     }
 
-    // Keep the detector's lens in sync so front-camera mirroring stays correct.
+    // Keep the detectors' lens in sync so front-camera mirroring stays correct.
     LaunchedEffect(cameraState.lens) {
         poseDetector.setLens(cameraState.lens)
+        faceDetector.setLens(cameraState.lens)
     }
 
     // Device level/tilt sensor.
     val levelSensor = remember { DeviceLevelSensor(context.applicationContext) }
     val tilt by levelSensor.tilt.collectAsStateWithLifecycle(initialValue = TiltState.UNAVAILABLE)
 
-    // Overlay mode + settings (persisted via DataStore in OverlayViewModel).
-    val overlayViewModel: OverlayViewModel = viewModel(
-        factory = OverlayViewModelFactory(context.applicationContext),
-    )
-    val overlayPrefs by overlayViewModel.state.collectAsStateWithLifecycle()
     var showMoreSheet by remember { mutableStateOf(false) }
     var focusTap by remember { mutableStateOf<FocusTap?>(null) }
+
+    // Colour look: applied to the live preview and baked into saved photos.
+    // Held in a ViewModel so it survives a trip to the gallery.
+    val filterViewModel: FilterViewModel = viewModel()
+    val filter by filterViewModel.filter.collectAsStateWithLifecycle()
+    var showFilters by remember { mutableStateOf(false) }
 
     // Selected photography style; drives the composition engine.
     val styleViewModel: StyleViewModel = viewModel(
@@ -159,8 +206,9 @@ fun CameraScreen(
 
     // Composition engine, tuned to the selected style. Recreated when the style
     // changes so advice/scoring tracks the chosen look. Pure + cheap.
-    val compositionEngine = remember(stylePrefs.style) {
-        DefaultCompositionEngine(stylePrefs.style.toThresholds())
+    val compositionEngine: CompositionEngine = remember(stylePrefs.style, groupMode) {
+        if (groupMode) GroupCompositionEngine()
+        else DefaultCompositionEngine(stylePrefs.style.toThresholds())
     }
     // Evaluate the current (smoothed) subject + tilt. Portrait preview ~ 9:16.
     val composition = compositionEngine.evaluate(
@@ -170,7 +218,8 @@ fun CameraScreen(
     )
 
     // Target placement guidance: where the subject should sit for this style.
-    val target = if (subject.hasSubject) {
+    // (Groups have no single ideal zone, so group mode shows no target.)
+    val target = if (subject.hasSubject && !groupMode) {
         val thresholds = stylePrefs.style.toThresholds()
         val rect = CompositionTarget.idealRectFor(thresholds, subject)
         TargetSpec(
@@ -230,12 +279,15 @@ fun CameraScreen(
     val performCapture: () -> Unit = {
         isCapturing = true
         showFlash = true
-        controller.capturePhoto { result ->
+        controller.capturePhoto(filter) { result ->
             isCapturing = false
             when (result) {
                 // Like the stock camera: success is signalled by the
                 // thumbnail updating, not a text pill.
-                is CaptureResult.Success -> onPhotoCaptured()
+                is CaptureResult.Success -> {
+                    onPhotoCaptured()
+                    if (result.filterFailed) feedback = "Saved without the filter"
+                }
                 is CaptureResult.Failure -> feedback = result.message
             }
         }
@@ -280,7 +332,10 @@ fun CameraScreen(
 
     // "Shot ready": the subject sits in whichever target zone is on screen.
     // Greens the shutter ring and ticks once on the way in.
-    val shotReady = overlaySpec.target?.aligned == true || overlaySpec.aiTarget?.aligned == true
+    val shotReady = overlaySpec.target?.aligned == true ||
+        overlaySpec.aiTarget?.aligned == true ||
+        // Group mode has no target zone; a good group read is "ready".
+        (groupMode && groupCount > 0 && composition.overall == CompositionRating.GOOD)
     var wasShotReady by remember { mutableStateOf(false) }
     LaunchedEffect(shotReady) {
         if (shotReady && !wasShotReady) {
@@ -320,6 +375,7 @@ fun CameraScreen(
     ) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
+            update = { view -> view.applyPhotoFilter(filter) },
             factory = { ctx ->
                 PreviewView(ctx).apply {
                     implementationMode = PreviewView.ImplementationMode.COMPATIBLE
@@ -385,8 +441,27 @@ fun CameraScreen(
             onSelectStyle = { styleViewModel.setStyle(it) },
             onOpenStylePicker = onOpenStylePicker,
             onOpenMore = { showMoreSheet = true },
+            filterActive = filter.isActive,
+            onToggleFilters = { showFilters = !showFilters },
             modifier = Modifier.align(Alignment.TopCenter),
         )
+
+        // Look chips, just under the zoom readout position.
+        AnimatedVisibility(
+            visible = showFilters,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                // Directly under the top bar (48dp buttons + 8dp padding each side).
+                .padding(top = Spacing.xxl + Spacing.sm),
+        ) {
+            FilterStrip(
+                selected = filter,
+                onSelect = { filterViewModel.setFilter(it) },
+            )
+        }
 
         // Zoom readout, shown only when zoomed past the minimum. Sits just
         // below the top bar.
@@ -396,7 +471,14 @@ fun CameraScreen(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .statusBarsPadding()
-                    .padding(top = Spacing.xxl + Spacing.lg),
+                    // Drops below the filter chips while they're open.
+                    .padding(
+                        top = if (showFilters) {
+                            Spacing.xxl + Spacing.sm + Sizes.touchTarget + Spacing.xs
+                        } else {
+                            Spacing.xxl + Spacing.lg
+                        },
+                    ),
             )
         }
 
@@ -434,6 +516,7 @@ fun CameraScreen(
             onCycleTimer = { timer = timer.next() },
             countingDown = countdown != null,
             shotReady = shotReady,
+            groupCount = groupCount,
             modifier = Modifier.align(Alignment.BottomCenter),
         )
 

@@ -1,5 +1,6 @@
 package com.frame.app.platform.camera
 
+import com.frame.app.domain.model.PhotoFilter
 import kotlinx.coroutines.flow.StateFlow
 
 /**
@@ -40,8 +41,11 @@ interface CameraController {
     /** Set exposure compensation as an index within the device's supported range. */
     fun setExposureIndex(index: Int)
 
-    /** Capture a still photo; result delivered via [onResult]. */
-    fun capturePhoto(onResult: (CaptureResult) -> Unit)
+    /**
+     * Capture a still photo; result delivered via [onResult]. A non-[PhotoFilter.NONE]
+     * [filter] is baked into the saved file before the result is reported.
+     */
+    fun capturePhoto(filter: PhotoFilter = PhotoFilter.NONE, onResult: (CaptureResult) -> Unit)
 }
 
 enum class CameraLens { FRONT, BACK }
@@ -50,7 +54,11 @@ enum class FlashMode { OFF, ON, AUTO }
 
 /** Outcome of a still capture. */
 sealed interface CaptureResult {
-    /** Saved successfully; [uri] is a string form of the MediaStore content URI. */
-    data class Success(val uri: String) : CaptureResult
+    /**
+     * Saved successfully; [uri] is a string form of the MediaStore content URI.
+     * [filterFailed] is true when a filter was requested but could not be
+     * applied, so the photo was saved unfiltered.
+     */
+    data class Success(val uri: String, val filterFailed: Boolean = false) : CaptureResult
     data class Failure(val message: String, val cause: Throwable? = null) : CaptureResult
 }

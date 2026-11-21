@@ -36,10 +36,10 @@ import com.frame.app.ui.theme.Sizes
 import com.frame.app.ui.theme.Spacing
 
 /**
- * `GUIDED  MINIMAL`: a stock-camera-style mode strip. The selected mode is full
- * white with a yellow dot under it; the other is dimmed. Switching animates: the
- * dot scales and fades from one tab to the other and the label cross-fades, so
- * the change reads as one smooth motion instead of a snap.
+ * `GUIDED  GROUP  MINIMAL`: a stock-camera-style mode strip. The selected mode
+ * is full white with a yellow dot under it; the others are dimmed. Switching
+ * animates: the dot scales and fades from one tab to the other and the label
+ * cross-fades, so the change reads as one smooth motion instead of a snap.
  *
  * There is deliberately no press highlight box. Each tab is still a 48dp tap
  * target and is announced to screen readers as a selectable tab.
@@ -55,20 +55,24 @@ fun ModeStrip(
 ) {
     Row(
         modifier = modifier.selectableGroup(),
-        horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.xxs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ModeTab(
-            label = "GUIDED",
-            selected = mode == CameraMode.GUIDED,
-            onClick = { onSelect(CameraMode.GUIDED) },
-        )
-        ModeTab(
-            label = "MINIMAL",
-            selected = mode == CameraMode.MINIMAL,
-            onClick = { onSelect(CameraMode.MINIMAL) },
-        )
+        // Enum order is the strip order, so the swipe order always matches it.
+        CameraMode.entries.forEach { entry ->
+            ModeTab(
+                label = entry.label(),
+                selected = mode == entry,
+                onClick = { onSelect(entry) },
+            )
+        }
     }
+}
+
+private fun CameraMode.label(): String = when (this) {
+    CameraMode.GUIDED -> "GUIDED"
+    CameraMode.GROUP -> "GROUP"
+    CameraMode.MINIMAL -> "MINIMAL"
 }
 
 @Composable
@@ -100,7 +104,8 @@ private fun ModeTab(
                 role = Role.Tab,
                 onClick = onClick,
             )
-            .padding(horizontal = Spacing.sm),
+            // Tight sides keep three tabs clear of the timer and AI buttons.
+            .padding(horizontal = Spacing.xs),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {

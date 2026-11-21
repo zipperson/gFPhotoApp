@@ -45,13 +45,20 @@ data class StatusPillModel(
     val isGood: Boolean,
 )
 
-fun CompositionResult.toStatusPillModel(): StatusPillModel {
+/**
+ * @param peopleCount set in Group mode: the "all good" line then names the
+ *        group ("Great group shot · 3 people"). Suggestions are unchanged.
+ */
+fun CompositionResult.toStatusPillModel(peopleCount: Int? = null): StatusPillModel {
     val hasRead = overall != CompositionRating.UNKNOWN && score != null
     if (!hasRead) return StatusPillModel(visible = false, message = "", score = null, isGood = false)
 
     val isGood = overall == CompositionRating.GOOD
+    val goodLine = if (peopleCount != null) {
+        "Great group shot · $peopleCount ${if (peopleCount == 1) "person" else "people"}"
+    } else "Great composition"
     val message = suggestions.firstOrNull()
-        ?: if (isGood) "Great composition" else "Keep adjusting"
+        ?: if (isGood) goodLine else "Keep adjusting"
     return StatusPillModel(visible = true, message = message, score = score, isGood = isGood)
 }
 
@@ -63,8 +70,9 @@ fun CompositionResult.toStatusPillModel(): StatusPillModel {
 fun StatusPill(
     result: CompositionResult,
     modifier: Modifier = Modifier,
+    peopleCount: Int? = null,
 ) {
-    val model = result.toStatusPillModel()
+    val model = result.toStatusPillModel(peopleCount)
 
     AnimatedVisibility(
         visible = model.visible,

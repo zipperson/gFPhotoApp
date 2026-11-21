@@ -1,6 +1,15 @@
 package com.frame.app.ui.camera.hud
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import com.frame.app.ui.components.GlassPill
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,8 +35,8 @@ import com.frame.app.ui.theme.Spacing
 /**
  * The thumb-zone stack, bottom-up:
  *   1. thumbnail | shutter | flip camera
- *   2. GUIDED / MINIMAL mode strip, with the AI button at the right
- *   3. live status line (Guided only)
+ *   2. GUIDED / GROUP / MINIMAL mode strip, timer at the left, AI at the right
+ *   3. live status line (Guided and Group)
  *
  * Everything the user taps while shooting is within thumb reach.
  */
@@ -49,6 +58,8 @@ fun CameraBottomBar(
     onCycleTimer: () -> Unit,
     countingDown: Boolean,
     shotReady: Boolean,
+    /** Faces in view (group mode); drives the "Looking for faces" and count text. */
+    groupCount: Int,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -59,10 +70,23 @@ fun CameraBottomBar(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
-        // 3. Status line (Guided only).
-        if (mode == CameraMode.GUIDED) {
+        // 3. Status line (Guided and Group).
+        if (mode != CameraMode.MINIMAL) {
             if (analysisEnabled) {
-                StatusPill(result = composition)
+                if (mode == CameraMode.GROUP && groupCount == 0) {
+                    // Nothing to judge yet; say what we're waiting for.
+                    GlassPill {
+                        Text(
+                            text = "Looking for faces",
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    }
+                } else {
+                    StatusPill(
+                        result = composition,
+                        peopleCount = if (mode == CameraMode.GROUP) groupCount else null,
+                    )
+                }
             } else {
                 GuidancePausedPill(onResume = onResumeAnalysis)
             }
@@ -84,7 +108,7 @@ fun CameraBottomBar(
             ModeStrip(mode = mode, onSelect = onModeChange)
             // Minimal hides the AI button, except while advice is active, so an
             // on-screen AI target can always be reopened or cleared.
-            if (mode == CameraMode.GUIDED || adviceActive) {
+            if (mode != CameraMode.MINIMAL || adviceActive) {
                 AiButton(
                     active = adviceActive,
                     onClick = onAiClick,

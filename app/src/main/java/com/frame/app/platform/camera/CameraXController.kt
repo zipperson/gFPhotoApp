@@ -13,6 +13,8 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
+import com.frame.app.domain.model.PhotoFilter
+import com.frame.app.platform.filter.PhotoFilterProcessor
 import com.frame.app.platform.storage.MediaStorePhotoStore
 import com.frame.app.platform.storage.PhotoNaming
 import com.frame.app.platform.storage.PhotoStore
@@ -52,6 +54,9 @@ class CameraXController(
     private val mainExecutor: Executor = ContextCompat.getMainExecutor(appContext)
     // Dedicated single thread for frame analysis, off the main thread.
     private val analysisExecutor = Executors.newSingleThreadExecutor()
+    // Separate thread for baking filters into saved photos.
+    private val filterExecutor = Executors.newSingleThreadExecutor()
+    private val filterProcessor = PhotoFilterProcessor(appContext)
 
     private var cameraProvider: ProcessCameraProvider? = null
     private var preview: Preview? = null
@@ -186,6 +191,8 @@ class CameraXController(
     fun shutdown() {
         unbind()
         analysisExecutor.shutdown()
+        // Let any in-flight filter job finish so a saved photo isn't left pending.
+        filterExecutor.shutdown()
     }
 
     // --- CameraController members. Task 3 implements only readiness/preview; the
@@ -285,7 +292,7 @@ class CameraXController(
         _state.update { it.copy(exposureIndex = clamped) }
     }
 
-    override fun capturePhoto(onResult: (CaptureResult) -> Unit) {
+    override fun capturePhoto(filter: PhotoFilter, onResult: (CaptureResult) -> Unit) {
         val capture = imageCapture
         if (capture == null) {
             onResult(CaptureResult.Failure("Camera not ready"))
@@ -315,8 +322,32 @@ class CameraXController(
             object : ImageCapture.OnImageSavedCallback {
                 override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
                     runCatching { outputStream.close() }
-                    photoStore.finalize(destination)
-                    onResult(CaptureResult.Success(destination.uri.toString()))
+                    if (!filter.isActive) {
+                        photoStore.finalize(destination)
+                        onResult(CaptureResult.Success(destination.uri.toString()))
+                    } else {
+                        // Filtering decodes and re-encodes the JPEG: keep it off the
+                        // main thread, and while the item is still pending so it
+                        // never appears in the gallery half-processed.
+                        val finish = { applied: Boolean ->
+                            photoStore.finalize(destination)
+                            onResult(
+                                CaptureResult.Success(
+                                    uri = destination.uri.toString(),
+                                    filterFailed = !applied,
+                                )
+                            )
+                        }
+                        try {
+                            filterExecutor.execute {
+                                val applied = filterProcessor.apply(destination.uri, filter)
+                                mainExecutor.execute { finish(applied) }
+                            }
+                        } catch (e: java.util.concurrent.RejectedExecutionException) {
+                            // Screen was torn down mid-capture; keep the photo unfiltered.
+                            finish(false)
+                        }
+                    }
                 }
 
                 override fun onError(exception: ImageCaptureException) {

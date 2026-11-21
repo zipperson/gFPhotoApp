@@ -94,5 +94,5 @@ class OverlayPreferences(private val context: Context) : OverlayPreferencesStore
 /** Default overlay preset for a mode. */
 fun CameraMode.toPreset(): OverlaySettings = when (this) {
     CameraMode.MINIMAL -> OverlaySettings.MINIMAL
-    CameraMode.GUIDED -> OverlaySettings.GUIDED
+    CameraMode.GUIDED, CameraMode.GROUP -> OverlaySettings.GUIDED
 }

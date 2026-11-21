@@ -115,6 +115,9 @@ dependencies {
     // ML Kit Pose Detection (wired in Phase 3; declared now for the seam)
     implementation(libs.mlkit.pose.detection)
 
+    // ML Kit Face Detection (group mode: finds every face in the frame)
+    implementation(libs.mlkit.face.detection)
+
     // Room (scaffold only in Phase 1)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)

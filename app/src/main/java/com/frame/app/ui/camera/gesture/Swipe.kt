@@ -19,11 +19,12 @@ fun classifySwipe(dx: Float, dy: Float, thresholdPx: Float): SwipeDirection? {
 }
 
 /**
- * Mode strip reads `GUIDED  MINIMAL`. Swiping left moves to the right-hand
- * neighbour (MINIMAL); swiping right moves to the left-hand one (GUIDED).
- * Idempotent at the ends.
+ * Mode strip reads `GUIDED  GROUP  MINIMAL` (the enum order). Swiping left moves
+ * to the right-hand neighbour; swiping right moves to the left-hand one. It
+ * stops at the ends rather than wrapping.
  */
-fun CameraMode.afterSwipe(direction: SwipeDirection): CameraMode = when (direction) {
-    SwipeDirection.LEFT -> CameraMode.MINIMAL
-    SwipeDirection.RIGHT -> CameraMode.GUIDED
+fun CameraMode.afterSwipe(direction: SwipeDirection): CameraMode {
+    val modes = CameraMode.entries
+    val step = if (direction == SwipeDirection.LEFT) 1 else -1
+    return modes[(ordinal + step).coerceIn(0, modes.lastIndex)]
 }

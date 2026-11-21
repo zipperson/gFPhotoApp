@@ -43,6 +43,7 @@ class DefaultOverlayRenderer : OverlayRenderer {
             horizon = horizon,
             subjectBox = subjectBox,
             landmarks = landmarks,
+            faces = if (settings.showSubjectBox) subject.group?.faces.orEmpty() else emptyList(),
             // Target guidance rides with subject-box visibility. An active AI
             // target supersedes it so two competing zones never show at once.
             target = if (settings.showSubjectBox && aiTarget == null) target else null,

@@ -190,18 +190,9 @@ class DefaultCompositionEngine(
      * NOT_APPLICABLE checks are excluded so they neither help nor hurt. This is
      * fully determined by the measurable verdicts.
      */
-    private fun scoreFrom(checks: List<AspectCheck>): Int {
-        val applicable = checks.filter { it.verdict != AspectVerdict.NOT_APPLICABLE }
-        if (applicable.isEmpty()) return 0
-        val good = applicable.count { it.verdict == AspectVerdict.GOOD }
-        return ((good.toFloat() / applicable.size) * 100f).toInt()
-    }
+    private fun scoreFrom(checks: List<AspectCheck>): Int = CompositionScoring.scoreFrom(checks)
 
-    private fun ratingFrom(score: Int): CompositionRating = when {
-        score >= 80 -> CompositionRating.GOOD
-        score >= 50 -> CompositionRating.FAIR
-        else -> CompositionRating.POOR
-    }
+    private fun ratingFrom(score: Int): CompositionRating = CompositionScoring.ratingFrom(score)
 
     private companion object {
         const val VERTICAL_TOLERANCE = 0.15f

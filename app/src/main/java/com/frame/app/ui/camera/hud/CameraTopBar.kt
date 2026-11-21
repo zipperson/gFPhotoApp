@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FlashAuto
 import androidx.compose.material.icons.filled.FlashOff
 import androidx.compose.material.icons.filled.FlashOn
+import androidx.compose.material.icons.filled.FilterVintage
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -22,9 +23,10 @@ import com.frame.app.ui.theme.Sizes
 import com.frame.app.ui.theme.Spacing
 
 /**
- * The slim top bar: flash | style | more. Three controls instead of seven, with
- * the style pill always centred (both sides are 48dp wide, even when the flash
- * button is hidden on a camera with no flash).
+ * The slim top bar: flash, filters | style | more. The style pill takes all
+ * the room between the groups so long names like "Classic Portrait" fit, which
+ * puts it a little right of true centre. The flash slot stays reserved on a
+ * camera with no flash so the other buttons don't jump.
  */
 @Composable
 fun CameraTopBar(
@@ -35,6 +37,8 @@ fun CameraTopBar(
     onSelectStyle: (PhotoStyle) -> Unit,
     onOpenStylePicker: () -> Unit,
     onOpenMore: () -> Unit,
+    filterActive: Boolean,
+    onToggleFilters: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -44,6 +48,7 @@ fun CameraTopBar(
             .padding(horizontal = Spacing.md, vertical = Spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Left group (2 x 48dp): flash, filters.
         if (hasFlashUnit) {
             val (icon, label) = when (flashMode) {
                 FlashMode.OFF -> Icons.Filled.FlashOff to "Flash off"
@@ -61,6 +66,13 @@ fun CameraTopBar(
             // Keep the style pill centred when there's no flash button.
             Spacer(modifier = Modifier.size(Sizes.touchTarget))
         }
+        GlassCircleButton(
+            icon = Icons.Filled.FilterVintage,
+            contentDescription = if (filterActive) "Filters, one applied" else "Filters",
+            onClickLabel = "Show filters",
+            onClick = onToggleFilters,
+            active = filterActive,
+        )
 
         Box(
             modifier = Modifier

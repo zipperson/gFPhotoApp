@@ -56,6 +56,25 @@ class StatusPillModelTest {
     }
 
     @Test
+    fun groupMode_goodLineNamesThePeople() {
+        assertEquals(
+            "Great group shot · 3 people",
+            result(CompositionRating.GOOD, 100).toStatusPillModel(peopleCount = 3).message,
+        )
+        assertEquals(
+            "Great group shot · 1 person",
+            result(CompositionRating.GOOD, 100).toStatusPillModel(peopleCount = 1).message,
+        )
+    }
+
+    @Test
+    fun groupMode_suggestionStillWinsOverTheCountLine() {
+        val m = result(CompositionRating.FAIR, 60, listOf("Step back to fit everyone"))
+            .toStatusPillModel(peopleCount = 4)
+        assertEquals("Step back to fit everyone", m.message)
+    }
+
+    @Test
     fun poorWithoutSuggestion_encouragesAdjusting() {
         val m = result(CompositionRating.POOR, 30).toStatusPillModel()
         assertEquals("Keep adjusting", m.message)

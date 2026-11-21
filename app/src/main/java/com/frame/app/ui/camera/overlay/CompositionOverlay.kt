@@ -15,6 +15,7 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.sp
+import com.frame.app.domain.composition.GroupFraming
 import com.frame.app.domain.service.OverlaySpec
 import com.frame.app.ui.theme.FrameAi
 import com.frame.app.ui.theme.FrameGreen
@@ -161,6 +162,20 @@ fun CompositionOverlay(
             drawSubjectBrackets(
                 left, top, right, bottom,
                 color = FrameYellow.copy(alpha = spec.opacity),
+            )
+        }
+
+        // Group mode: a thin rounded outline around each face. Faces touching an
+        // edge are yellow ("act on this"), the rest white.
+        spec.faces.forEach { face ->
+            val cut = GroupFraming.isClipped(face)
+            val color = (if (cut) FrameYellow else Color.White).copy(alpha = spec.opacity)
+            drawRoundRect(
+                color = color,
+                topLeft = Offset(map.x(face.left), map.y(face.top)),
+                size = Size(face.width * size.width, face.height * size.height),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(16f, 16f),
+                style = Stroke(width = 3f),
             )
         }
 

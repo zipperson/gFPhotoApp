@@ -79,6 +79,8 @@ data class OverlaySpec(
     val subjectBox: com.frame.app.domain.model.NormalizedRect?,
     /** Detected landmark points to dot on the overlay (empty when none/hidden). */
     val landmarks: List<com.frame.app.domain.model.NormalizedLandmark> = emptyList(),
+    /** Group mode: one outline per detected face (empty otherwise). */
+    val faces: List<com.frame.app.domain.model.NormalizedRect> = emptyList(),
     /** Target placement guidance: where the subject should be + alignment. */
     val target: TargetSpec? = null,
     /** AI-suggested subject placement, drawn distinctly (cyan), greening when
